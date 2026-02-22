@@ -1,0 +1,283 @@
+/* ===================================================================
+   LANDING PAGE — DevTools Pro
+   Animated gradient background, glass morphism cards, 3D hover effects
+   =================================================================== */
+
+.landing {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ===== ANIMATED BACKGROUND ===== */
+.landing-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+.landing-bg::before {
+  content: '';
+  position: absolute;
+  width: 120%;
+  height: 120%;
+  top: -10%;
+  left: -10%;
+  background:
+    radial-gradient(ellipse 600px 400px at 20% 30%, rgba(122,162,247,0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 500px 500px at 80% 20%, rgba(187,154,247,0.10) 0%, transparent 70%),
+    radial-gradient(ellipse 400px 400px at 60% 80%, rgba(125,207,255,0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 500px 300px at 10% 80%, rgba(158,206,106,0.06) 0%, transparent 70%);
+  animation: bgFloat 20s ease-in-out infinite alternate;
+}
+@keyframes bgFloat {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(30px, -20px) scale(1.02); }
+  100% { transform: translate(-20px, 15px) scale(0.98); }
+}
+
+/* Grid pattern overlay */
+.landing-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(122,162,247,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(122,162,247,0.03) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+/* ===== CONTENT ===== */
+.landing-content {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  max-width: 900px;
+  width: 100%;
+  padding: 40px 24px;
+}
+
+/* ===== LOGO & TITLE ===== */
+.landing-logo {
+  font-size: 52px;
+  margin-bottom: 16px;
+  filter: drop-shadow(0 0 30px rgba(122,162,247,0.3));
+  animation: logoFloat 3s ease-in-out infinite;
+}
+@keyframes logoFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.landing-title {
+  font-size: clamp(28px, 5vw, 48px);
+  font-weight: 900;
+  letter-spacing: -1px;
+  background: linear-gradient(135deg, #7aa2f7 0%, #bb9af7 35%, #7dcfff 70%, #9ece6a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  margin-bottom: 8px;
+  line-height: 1.1;
+}
+
+.landing-subtitle {
+  font-size: 16px;
+  color: var(--text-muted);
+  margin-bottom: 50px;
+  letter-spacing: 0.5px;
+}
+
+/* ===== CARDS GRID ===== */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 28px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* ===== CARD ===== */
+.tool-card {
+  position: relative;
+  background: linear-gradient(165deg, rgba(36,40,59,0.8), rgba(26,27,46,0.9));
+  border: 1px solid rgba(59,66,97,0.5);
+  border-radius: 20px;
+  padding: 36px 28px 32px;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  overflow: hidden;
+  text-align: left;
+  backdrop-filter: blur(12px);
+}
+
+/* Glow border effect */
+.tool-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 21px;
+  padding: 1px;
+  background: linear-gradient(135deg, transparent 40%, var(--card-glow, rgba(122,162,247,0.3)) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+/* Inner glow */
+.tool-card::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%), var(--card-glow, rgba(122,162,247,0.06)) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.tool-card:hover {
+  transform: translateY(-6px) scale(1.01);
+  border-color: rgba(122,162,247,0.3);
+  box-shadow:
+    0 20px 60px rgba(0,0,0,0.4),
+    0 0 40px var(--card-shadow, rgba(122,162,247,0.08));
+}
+.tool-card:hover::before { opacity: 1; }
+.tool-card:hover::after { opacity: 1; }
+
+.tool-card:active { transform: translateY(-2px) scale(0.99); }
+
+/* Card colors */
+.card-er { --card-glow: rgba(122,162,247,0.35); --card-shadow: rgba(122,162,247,0.12); }
+.card-prompt { --card-glow: rgba(187,154,247,0.35); --card-shadow: rgba(187,154,247,0.12); }
+
+/* Card icon */
+.card-icon {
+  font-size: 40px;
+  margin-bottom: 16px;
+  display: inline-block;
+  filter: drop-shadow(0 0 20px var(--card-shadow, rgba(122,162,247,0.15)));
+}
+
+.card-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  letter-spacing: -0.3px;
+}
+
+.card-description {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+.card-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.card-er .card-tag { background: rgba(122,162,247,0.12); color: var(--accent-blue); }
+.card-prompt .card-tag { background: rgba(187,154,247,0.12); color: var(--accent-purple); }
+
+.card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-blue);
+  transition: var(--transition);
+}
+.card-prompt .card-action { color: var(--accent-purple); }
+.card-action .arrow { transition: transform 0.3s ease; }
+.tool-card:hover .card-action .arrow { transform: translateX(5px); }
+
+/* ===== SETTINGS BUTTON ===== */
+.landing-settings {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 2;
+}
+.btn-settings {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: rgba(36,38,61,0.6);
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+}
+.btn-settings:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--accent-blue);
+  transform: rotate(30deg);
+}
+
+/* ===== API STATUS INDICATOR ===== */
+.api-status {
+  margin-top: 32px;
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.api-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.api-dot.connected { background: var(--accent-green); box-shadow: 0 0 8px rgba(158,206,106,0.4); }
+.api-dot.disconnected { background: var(--accent-red); box-shadow: 0 0 8px rgba(247,118,142,0.3); }
+
+/* ===== FOOTER ===== */
+.landing-footer {
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  z-index: 1;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 680px) {
+  .cards-grid { grid-template-columns: 1fr; max-width: 380px; }
+  .landing-logo { font-size: 40px; }
+  .landing-subtitle { font-size: 14px; margin-bottom: 32px; }
+  .tool-card { padding: 28px 22px 24px; }
+}
