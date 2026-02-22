@@ -1,0 +1,2259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL → Diagrama Entidad-Relación</title>
+<style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg-primary: #1a1b26;
+  --bg-secondary: #24283b;
+  --bg-tertiary: #2f3348;
+  --bg-input: #1e2030;
+  --text-primary: #c0caf5;
+  --text-secondary: #a9b1d6;
+  --text-muted: #565f89;
+  --accent-blue: #7aa2f7;
+  --accent-cyan: #7dcfff;
+  --accent-green: #9ece6a;
+  --accent-yellow: #e0af68;
+  --accent-red: #f7768e;
+  --accent-purple: #bb9af7;
+  --accent-orange: #ff9e64;
+  --border-color: #3b4261;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --radius: 8px;
+  --transition: all 0.2s ease;
+}
+html, body { height: 100%; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg-primary); color: var(--text-primary); overflow: hidden; }
+
+/* ===== LAYOUT ===== */
+.app { display: flex; flex-direction: column; height: 100vh; }
+.header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); min-height: 56px; flex-shrink: 0; z-index: 10; }
+.header-left { display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 18px; font-weight: 700; background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; letter-spacing: -0.5px; }
+.header-logo { font-size: 24px; }
+.header-right { display: flex; align-items: center; gap: 8px; }
+
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* ===== LEFT PANEL ===== */
+.panel-left { width: 420px; min-width: 320px; max-width: 600px; display: flex; flex-direction: column; background: var(--bg-secondary); border-right: 1px solid var(--border-color); flex-shrink: 0; }
+.panel-header { padding: 12px 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; }
+.panel-header h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+
+.controls { padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--border-color); }
+
+.sql-editor-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+.sql-editor { flex: 1; width: 100%; resize: none; background: var(--bg-input); color: var(--accent-cyan); border: none; padding: 16px; font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; font-size: 13px; line-height: 1.6; outline: none; tab-size: 2; }
+.sql-editor::placeholder { color: var(--text-muted); }
+.sql-editor:focus { box-shadow: inset 0 0 0 1px var(--accent-blue); }
+
+.status-bar { padding: 6px 16px; background: var(--bg-tertiary); border-top: 1px solid var(--border-color); font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; }
+
+/* ===== BUTTONS ===== */
+.btn { padding: 7px 14px; border-radius: 6px; border: 1px solid transparent; font-size: 12px; font-weight: 600; cursor: pointer; transition: var(--transition); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-family: inherit; }
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); color: #fff; border: none; }
+.btn-primary:hover { filter: brightness(1.15); box-shadow: 0 2px 12px rgba(122,162,247,0.3); }
+.btn-secondary { background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-color); }
+.btn-secondary:hover { background: var(--border-color); color: var(--text-primary); }
+.btn-success { background: linear-gradient(135deg, var(--accent-green), #73c054); color: #1a1b26; border: none; }
+.btn-success:hover { filter: brightness(1.1); box-shadow: 0 2px 12px rgba(158,206,106,0.3); }
+.btn-danger { background: var(--accent-red); color: #fff; border: none; }
+.btn-danger:hover { filter: brightness(1.15); }
+.btn-sm { padding: 5px 10px; font-size: 11px; }
+
+select.dialect-select { padding: 7px 10px; border-radius: 6px; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-color); font-size: 12px; font-family: inherit; cursor: pointer; outline: none; }
+select.dialect-select:focus { border-color: var(--accent-blue); }
+
+/* ===== RIGHT PANEL (CANVAS) ===== */
+.panel-right { flex: 1; position: relative; overflow: hidden; background: var(--bg-primary); }
+.canvas-container { width: 100%; height: 100%; position: relative; }
+#erCanvas { display: block; width: 100%; height: 100%; cursor: grab; }
+#erCanvas.grabbing { cursor: grabbing; }
+#erCanvas.moving-table { cursor: move; }
+
+.canvas-controls { position: absolute; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 4px; z-index: 5; }
+.canvas-controls .btn { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border-color); }
+.canvas-controls .btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+.zoom-indicator { position: absolute; bottom: 16px; left: 16px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--text-muted); z-index: 5; }
+
+.watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: var(--text-muted); opacity: 0.3; pointer-events: none; z-index: 1; }
+.watermark .icon { font-size: 64px; margin-bottom: 12px; }
+.watermark p { font-size: 16px; }
+
+/* ===== ERROR TOAST ===== */
+.toast-container { position: fixed; top: 70px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
+.toast { padding: 12px 18px; border-radius: 8px; font-size: 13px; max-width: 400px; animation: slideIn 0.3s ease; box-shadow: var(--shadow); display: flex; align-items: flex-start; gap: 10px; }
+.toast-error { background: #3b2030; border: 1px solid var(--accent-red); color: var(--accent-red); }
+.toast-success { background: #1e3a2a; border: 1px solid var(--accent-green); color: var(--accent-green); }
+.toast-info { background: #1e2d4a; border: 1px solid var(--accent-blue); color: var(--accent-blue); }
+.toast .close-toast { cursor: pointer; font-size: 16px; opacity: 0.7; margin-left: auto; flex-shrink: 0; }
+.toast .close-toast:hover { opacity: 1; }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* ===== EXAMPLES DROPDOWN ===== */
+.dropdown { position: relative; display: inline-block; }
+.dropdown-content { display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; min-width: 220px; z-index: 100; box-shadow: var(--shadow); overflow: hidden; }
+.dropdown-content.show { display: block; }
+.dropdown-content a { display: block; padding: 10px 16px; color: var(--text-secondary); font-size: 12px; text-decoration: none; transition: var(--transition); cursor: pointer; }
+.dropdown-content a:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+/* ===== RESIZE HANDLE ===== */
+.resize-handle { width: 4px; cursor: col-resize; background: transparent; transition: background 0.2s; flex-shrink: 0; }
+.resize-handle:hover, .resize-handle.active { background: var(--accent-blue); }
+
+/* ===== TOOLTIP ===== */
+.canvas-tooltip { position: fixed; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; font-size: 11px; color: var(--text-secondary); pointer-events: none; z-index: 200; max-width: 320px; box-shadow: var(--shadow); display: none; line-height: 1.5; }
+.canvas-tooltip .tt-title { font-weight: 700; color: var(--text-primary); margin-bottom: 4px; font-size: 12px; }
+.canvas-tooltip .tt-row { display: flex; gap: 6px; }
+.canvas-tooltip .tt-label { color: var(--text-muted); }
+.canvas-tooltip .tt-value { color: var(--accent-cyan); }
+
+/* ===== STATS BAR ===== */
+.stats-bar { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; z-index: 5; flex-wrap: wrap; }
+.stat-badge { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+.stat-badge .num { color: var(--accent-yellow); font-weight: 700; }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  .main { flex-direction: column; }
+  .panel-left { width: 100% !important; max-width: 100%; min-width: 0; height: 45vh; border-right: none; border-bottom: 1px solid var(--border-color); }
+  .resize-handle { display: none; }
+  .panel-right { height: 55vh; }
+}
+
+/* ===== LOADING ===== */
+.loading-overlay { position: absolute; inset: 0; background: rgba(26,27,38,0.85); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.spinner { width: 40px; height: 40px; border: 3px solid var(--border-color); border-top-color: var(--accent-blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-left">
+      <span class="header-logo">🗂️</span>
+      <h1>SQL → Diagrama Entidad-Relación</h1>
+    </div>
+    <div class="header-right">
+      <span style="font-size:11px; color:var(--text-muted);">Pega tu SQL DDL y genera un diagrama ER profesional</span>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <div class="main">
+    <!-- LEFT PANEL -->
+    <div class="panel-left" id="panelLeft">
+      <div class="panel-header">
+        <h2>📝 Editor SQL</h2>
+        <select class="dialect-select" id="dialectSelect" title="Dialecto SQL">
+          <option value="postgresql">PostgreSQL</option>
+          <option value="mysql">MySQL</option>
+          <option value="transactsql">SQL Server</option>
+          <option value="sqlite">SQLite</option>
+        </select>
+      </div>
+      <div class="controls">
+        <button class="btn btn-primary" id="btnGenerate" title="Parsear SQL y generar diagrama">
+          ⚡ Generar Diagrama
+        </button>
+        <button class="btn btn-success" id="btnExportPng" title="Descargar como imagen PNG">
+          📥 Descargar PNG
+        </button>
+        <div class="dropdown">
+          <button class="btn btn-secondary" id="btnExamples">📋 Ejemplos ▾</button>
+          <div class="dropdown-content" id="examplesDropdown">
+            <a data-example="ecommerce">🛒 E-Commerce (8 tablas)</a>
+            <a data-example="university">🎓 Universidad (6 tablas)</a>
+            <a data-example="social">💬 Red Social (7 tablas)</a>
+            <a data-example="hospital">🏥 Hospital (9 tablas)</a>
+            <a data-example="complex">🧩 SQL Complejo (CHECK, ARRAY, JSON)</a>
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="btnClear" title="Limpiar editor">🗑️</button>
+        <button class="btn btn-secondary btn-sm" id="btnFitView" title="Ajustar vista">🔲</button>
+      </div>
+      <div class="sql-editor-wrap">
+        <textarea class="sql-editor" id="sqlEditor" placeholder="-- Pega aquí tu código SQL DDL
+-- Soporta: CREATE TABLE, ALTER TABLE, FOREIGN KEY,
+-- CHECK, DEFAULT, UNIQUE, NOT NULL, ARRAY, JSON,
+-- comentarios, schemas, claves compuestas...
+-- 
+-- Ejemplo rápido:
+-- CREATE TABLE users (
+--   id SERIAL PRIMARY KEY,
+--   name VARCHAR(100) NOT NULL,
+--   email VARCHAR(255) UNIQUE
+-- );
+" spellcheck="false"></textarea>
+      </div>
+      <div class="status-bar">
+        <span id="statusText">Listo</span>
+        <span id="lineCount">Líneas: 0</span>
+      </div>
+    </div>
+
+    <!-- RESIZE HANDLE -->
+    <div class="resize-handle" id="resizeHandle"></div>
+
+    <!-- RIGHT PANEL -->
+    <div class="panel-right" id="panelRight">
+      <div class="canvas-container" id="canvasContainer">
+        <canvas id="erCanvas"></canvas>
+        <div class="watermark" id="watermark">
+          <div class="icon">📊</div>
+          <p>Pega tu SQL y haz clic en "Generar Diagrama"</p>
+        </div>
+        <div class="stats-bar" id="statsBar" style="display:none;">
+          <div class="stat-badge">Tablas: <span class="num" id="statTables">0</span></div>
+          <div class="stat-badge">Relaciones: <span class="num" id="statRelations">0</span></div>
+          <div class="stat-badge">Columnas: <span class="num" id="statColumns">0</span></div>
+        </div>
+      </div>
+      <div class="canvas-controls">
+        <button class="btn" id="btnZoomIn" title="Zoom In">+</button>
+        <button class="btn" id="btnZoomOut" title="Zoom Out">−</button>
+        <button class="btn" id="btnResetView" title="Reset View">⌂</button>
+      </div>
+      <div class="zoom-indicator" id="zoomIndicator">100%</div>
+    </div>
+  </div>
+</div>
+
+<!-- TOOLTIP -->
+<div class="canvas-tooltip" id="canvasTooltip"></div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- SCRIPTS -->
+<script>
+// ===========================================================================
+// SQL → ER DIAGRAM - COMPLETE APPLICATION
+// ===========================================================================
+
+// ─── TOAST NOTIFICATIONS ────────────────────────────────────────────────────
+function showToast(msg, type = 'info', duration = 5000) {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<span>${msg}</span><span class="close-toast" onclick="this.parentElement.remove()">✕</span>`;
+  container.appendChild(toast);
+  setTimeout(() => { if (toast.parentElement) toast.remove(); }, duration);
+}
+
+// ─── SQL EXAMPLES ───────────────────────────────────────────────────────────
+const SQL_EXAMPLES = {
+  ecommerce: `-- =============================================
+-- E-Commerce Database Schema
+-- =============================================
+
+CREATE TABLE customers (
+    customer_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(20),
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    CONSTRAINT chk_email CHECK (email LIKE '%@%.%')
+);
+
+CREATE TABLE categories (
+    category_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    parent_category_id INT REFERENCES categories(category_id),
+    image_url VARCHAR(500),
+    sort_order INT DEFAULT 0
+);
+
+CREATE TABLE products (
+    product_id SERIAL PRIMARY KEY,
+    sku VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    price DECIMAL(10,2) NOT NULL,
+    cost DECIMAL(10,2),
+    stock_quantity INT DEFAULT 0,
+    category_id INT NOT NULL REFERENCES categories(category_id),
+    weight DECIMAL(8,2),
+    is_available BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_price CHECK (price > 0),
+    CONSTRAINT chk_stock CHECK (stock_quantity >= 0)
+);
+
+CREATE TABLE orders (
+    order_id SERIAL PRIMARY KEY,
+    customer_id INT NOT NULL REFERENCES customers(customer_id),
+    order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(30) DEFAULT 'pending',
+    shipping_address TEXT NOT NULL,
+    total_amount DECIMAL(12,2) NOT NULL,
+    discount_amount DECIMAL(10,2) DEFAULT 0,
+    tax_amount DECIMAL(10,2) DEFAULT 0,
+    tracking_number VARCHAR(100),
+    notes TEXT,
+    CONSTRAINT chk_status CHECK (status IN ('pending','processing','shipped','delivered','cancelled'))
+);
+
+CREATE TABLE order_items (
+    item_id SERIAL PRIMARY KEY,
+    order_id INT NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+    product_id INT NOT NULL REFERENCES products(product_id),
+    quantity INT NOT NULL,
+    unit_price DECIMAL(10,2) NOT NULL,
+    discount DECIMAL(5,2) DEFAULT 0,
+    CONSTRAINT chk_qty CHECK (quantity > 0)
+);
+
+CREATE TABLE payments (
+    payment_id SERIAL PRIMARY KEY,
+    order_id INT NOT NULL REFERENCES orders(order_id),
+    amount DECIMAL(12,2) NOT NULL,
+    payment_method VARCHAR(30) NOT NULL,
+    transaction_id VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'pending',
+    paid_at TIMESTAMP,
+    CONSTRAINT chk_payment_method CHECK (payment_method IN ('credit_card','debit_card','paypal','bank_transfer'))
+);
+
+CREATE TABLE reviews (
+    review_id SERIAL PRIMARY KEY,
+    product_id INT NOT NULL REFERENCES products(product_id),
+    customer_id INT NOT NULL REFERENCES customers(customer_id),
+    rating INT NOT NULL,
+    title VARCHAR(200),
+    comment TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_rating CHECK (rating BETWEEN 1 AND 5),
+    CONSTRAINT uq_review UNIQUE (product_id, customer_id)
+);
+
+CREATE TABLE wishlists (
+    wishlist_id SERIAL PRIMARY KEY,
+    customer_id INT NOT NULL REFERENCES customers(customer_id),
+    product_id INT NOT NULL REFERENCES products(product_id),
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_wishlist UNIQUE (customer_id, product_id)
+);`,
+
+  university: `-- =============================================
+-- University Database Schema
+-- =============================================
+
+CREATE TABLE departments (
+    dept_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    building VARCHAR(50),
+    budget DECIMAL(12,2) DEFAULT 0,
+    head_professor_id INT
+);
+
+CREATE TABLE professors (
+    professor_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    dept_id INT REFERENCES departments(dept_id),
+    hire_date DATE NOT NULL,
+    salary DECIMAL(10,2),
+    title VARCHAR(50) DEFAULT 'Assistant Professor',
+    office VARCHAR(20)
+);
+
+ALTER TABLE departments ADD CONSTRAINT fk_head
+    FOREIGN KEY (head_professor_id) REFERENCES professors(professor_id);
+
+CREATE TABLE students (
+    student_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    date_of_birth DATE,
+    enrollment_date DATE DEFAULT CURRENT_DATE,
+    gpa DECIMAL(3,2) DEFAULT 0.00,
+    dept_id INT REFERENCES departments(dept_id),
+    CONSTRAINT chk_gpa CHECK (gpa BETWEEN 0.00 AND 4.00)
+);
+
+CREATE TABLE courses (
+    course_id SERIAL PRIMARY KEY,
+    code VARCHAR(10) UNIQUE NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    credits INT NOT NULL,
+    dept_id INT NOT NULL REFERENCES departments(dept_id),
+    professor_id INT REFERENCES professors(professor_id),
+    max_students INT DEFAULT 30,
+    CONSTRAINT chk_credits CHECK (credits BETWEEN 1 AND 8)
+);
+
+CREATE TABLE enrollments (
+    enrollment_id SERIAL PRIMARY KEY,
+    student_id INT NOT NULL REFERENCES students(student_id),
+    course_id INT NOT NULL REFERENCES courses(course_id),
+    semester VARCHAR(20) NOT NULL,
+    grade VARCHAR(2),
+    enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_enrollment UNIQUE (student_id, course_id, semester)
+);
+
+CREATE TABLE prerequisites (
+    prereq_id SERIAL PRIMARY KEY,
+    course_id INT NOT NULL REFERENCES courses(course_id),
+    required_course_id INT NOT NULL REFERENCES courses(course_id),
+    CONSTRAINT chk_not_self CHECK (course_id != required_course_id),
+    CONSTRAINT uq_prereq UNIQUE (course_id, required_course_id)
+);`,
+
+  social: `-- =============================================
+-- Social Network Database Schema
+-- =============================================
+
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    username VARCHAR(30) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    display_name VARCHAR(100) NOT NULL,
+    bio TEXT,
+    avatar_url VARCHAR(500),
+    is_verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMP
+);
+
+CREATE TABLE posts (
+    post_id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    media_url VARCHAR(500),
+    visibility VARCHAR(20) DEFAULT 'public',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP,
+    like_count INT DEFAULT 0,
+    CONSTRAINT chk_visibility CHECK (visibility IN ('public','private','friends'))
+);
+
+CREATE TABLE comments (
+    comment_id SERIAL PRIMARY KEY,
+    post_id INT NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(user_id),
+    parent_comment_id INT REFERENCES comments(comment_id),
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE likes (
+    like_id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(user_id),
+    post_id INT NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_like UNIQUE (user_id, post_id)
+);
+
+CREATE TABLE friendships (
+    friendship_id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(user_id),
+    friend_id INT NOT NULL REFERENCES users(user_id),
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_not_self CHECK (user_id != friend_id),
+    CONSTRAINT uq_friendship UNIQUE (user_id, friend_id),
+    CONSTRAINT chk_friendship_status CHECK (status IN ('pending','accepted','blocked'))
+);
+
+CREATE TABLE messages (
+    message_id SERIAL PRIMARY KEY,
+    sender_id INT NOT NULL REFERENCES users(user_id),
+    receiver_id INT NOT NULL REFERENCES users(user_id),
+    content TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_not_self_msg CHECK (sender_id != receiver_id)
+);
+
+CREATE TABLE hashtags (
+    hashtag_id SERIAL PRIMARY KEY,
+    tag VARCHAR(100) UNIQUE NOT NULL,
+    post_count INT DEFAULT 0
+);
+
+CREATE TABLE post_hashtags (
+    post_id INT NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
+    hashtag_id INT NOT NULL REFERENCES hashtags(hashtag_id),
+    PRIMARY KEY (post_id, hashtag_id)
+);`,
+
+  hospital: `-- =============================================
+-- Hospital Management Database Schema
+-- =============================================
+
+CREATE TABLE departments (
+    dept_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    floor INT,
+    phone VARCHAR(20),
+    head_doctor_id INT
+);
+
+CREATE TABLE doctors (
+    doctor_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    specialization VARCHAR(100) NOT NULL,
+    email VARCHAR(255) UNIQUE,
+    phone VARCHAR(20),
+    dept_id INT REFERENCES departments(dept_id),
+    license_number VARCHAR(50) UNIQUE NOT NULL,
+    hire_date DATE NOT NULL,
+    salary DECIMAL(10,2)
+);
+
+ALTER TABLE departments ADD CONSTRAINT fk_head_doctor
+    FOREIGN KEY (head_doctor_id) REFERENCES doctors(doctor_id);
+
+CREATE TABLE patients (
+    patient_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    date_of_birth DATE NOT NULL,
+    gender VARCHAR(10),
+    blood_type VARCHAR(5),
+    phone VARCHAR(20),
+    email VARCHAR(255),
+    address TEXT,
+    emergency_contact VARCHAR(100),
+    insurance_id VARCHAR(50),
+    CONSTRAINT chk_gender CHECK (gender IN ('Male','Female','Other')),
+    CONSTRAINT chk_blood CHECK (blood_type IN ('A+','A-','B+','B-','AB+','AB-','O+','O-'))
+);
+
+CREATE TABLE rooms (
+    room_id SERIAL PRIMARY KEY,
+    room_number VARCHAR(10) UNIQUE NOT NULL,
+    dept_id INT REFERENCES departments(dept_id),
+    room_type VARCHAR(30) NOT NULL,
+    capacity INT DEFAULT 1,
+    daily_rate DECIMAL(8,2) NOT NULL,
+    is_available BOOLEAN DEFAULT TRUE,
+    CONSTRAINT chk_room_type CHECK (room_type IN ('General','Private','ICU','Operating','Emergency'))
+);
+
+CREATE TABLE appointments (
+    appointment_id SERIAL PRIMARY KEY,
+    patient_id INT NOT NULL REFERENCES patients(patient_id),
+    doctor_id INT NOT NULL REFERENCES doctors(doctor_id),
+    appointment_date TIMESTAMP NOT NULL,
+    duration_minutes INT DEFAULT 30,
+    status VARCHAR(20) DEFAULT 'scheduled',
+    reason TEXT,
+    notes TEXT,
+    CONSTRAINT chk_apt_status CHECK (status IN ('scheduled','completed','cancelled','no_show'))
+);
+
+CREATE TABLE admissions (
+    admission_id SERIAL PRIMARY KEY,
+    patient_id INT NOT NULL REFERENCES patients(patient_id),
+    room_id INT NOT NULL REFERENCES rooms(room_id),
+    doctor_id INT NOT NULL REFERENCES doctors(doctor_id),
+    admission_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    discharge_date TIMESTAMP,
+    diagnosis TEXT,
+    status VARCHAR(20) DEFAULT 'admitted',
+    CONSTRAINT chk_adm_status CHECK (status IN ('admitted','discharged','transferred'))
+);
+
+CREATE TABLE prescriptions (
+    prescription_id SERIAL PRIMARY KEY,
+    patient_id INT NOT NULL REFERENCES patients(patient_id),
+    doctor_id INT NOT NULL REFERENCES doctors(doctor_id),
+    admission_id INT REFERENCES admissions(admission_id),
+    medication VARCHAR(200) NOT NULL,
+    dosage VARCHAR(100) NOT NULL,
+    frequency VARCHAR(50),
+    start_date DATE NOT NULL,
+    end_date DATE,
+    notes TEXT
+);
+
+CREATE TABLE lab_tests (
+    test_id SERIAL PRIMARY KEY,
+    patient_id INT NOT NULL REFERENCES patients(patient_id),
+    doctor_id INT NOT NULL REFERENCES doctors(doctor_id),
+    test_name VARCHAR(200) NOT NULL,
+    test_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    results TEXT,
+    status VARCHAR(20) DEFAULT 'pending',
+    CONSTRAINT chk_test_status CHECK (status IN ('pending','in_progress','completed'))
+);
+
+CREATE TABLE billing (
+    bill_id SERIAL PRIMARY KEY,
+    patient_id INT NOT NULL REFERENCES patients(patient_id),
+    admission_id INT REFERENCES admissions(admission_id),
+    total_amount DECIMAL(12,2) NOT NULL,
+    paid_amount DECIMAL(12,2) DEFAULT 0,
+    payment_status VARCHAR(20) DEFAULT 'unpaid',
+    bill_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    due_date DATE,
+    CONSTRAINT chk_bill_status CHECK (payment_status IN ('unpaid','partial','paid','overdue'))
+);`,
+
+  complex: `-- =============================================
+-- Complex SQL Features Demo
+-- Arrays, JSON, CHECK, Constraints, etc.
+-- =============================================
+
+-- Table with JSON columns and arrays (PostgreSQL style)
+CREATE TABLE user_profiles (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    preferences JSONB DEFAULT '{}',
+    tags TEXT[],
+    metadata JSON,
+    scores INT[],
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT chk_username_len CHECK (LENGTH(username) >= 3),
+    CONSTRAINT chk_email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$')
+);
+
+CREATE TABLE projects (
+    project_id SERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    owner_id INT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'draft',
+    priority INT DEFAULT 3,
+    budget DECIMAL(15,2),
+    settings JSONB DEFAULT '{"notifications": true}',
+    team_members INT[],
+    milestones JSONB,
+    start_date DATE,
+    end_date DATE,
+    CONSTRAINT chk_status CHECK (status IN ('draft','active','paused','completed','archived')),
+    CONSTRAINT chk_priority CHECK (priority BETWEEN 1 AND 5),
+    CONSTRAINT chk_dates CHECK (end_date IS NULL OR end_date >= start_date),
+    CONSTRAINT chk_budget CHECK (budget IS NULL OR budget >= 0)
+);
+
+CREATE TABLE tasks (
+    task_id SERIAL PRIMARY KEY,
+    project_id INT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+    title VARCHAR(300) NOT NULL,
+    description TEXT,
+    assigned_to INT REFERENCES user_profiles(id) ON DELETE SET NULL,
+    created_by INT NOT NULL REFERENCES user_profiles(id),
+    status VARCHAR(20) DEFAULT 'todo',
+    priority INT DEFAULT 3,
+    labels TEXT[] DEFAULT '{}',
+    estimated_hours DECIMAL(6,2),
+    actual_hours DECIMAL(6,2),
+    due_date TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    dependencies INT[],
+    custom_fields JSONB DEFAULT '{}',
+    CONSTRAINT chk_task_status CHECK (status IN ('todo','in_progress','review','done','cancelled')),
+    CONSTRAINT chk_task_priority CHECK (priority BETWEEN 1 AND 5),
+    CONSTRAINT chk_hours CHECK (estimated_hours IS NULL OR estimated_hours > 0)
+);
+
+CREATE TABLE task_comments (
+    comment_id SERIAL PRIMARY KEY,
+    task_id INT NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+    author_id INT NOT NULL REFERENCES user_profiles(id),
+    content TEXT NOT NULL,
+    attachments JSONB DEFAULT '[]',
+    mentions INT[],
+    is_internal BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    edited_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE audit_log (
+    log_id BIGSERIAL PRIMARY KEY,
+    table_name VARCHAR(100) NOT NULL,
+    record_id INT NOT NULL,
+    action VARCHAR(10) NOT NULL,
+    old_values JSONB,
+    new_values JSONB,
+    changed_by INT REFERENCES user_profiles(id),
+    changed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    ip_address INET,
+    user_agent TEXT,
+    CONSTRAINT chk_action CHECK (action IN ('INSERT','UPDATE','DELETE'))
+);
+
+-- Composite unique constraint
+CREATE TABLE project_roles (
+    project_id INT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+    role VARCHAR(30) NOT NULL DEFAULT 'member',
+    permissions JSONB DEFAULT '{"read": true, "write": false}',
+    granted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    granted_by INT REFERENCES user_profiles(id),
+    PRIMARY KEY (project_id, user_id),
+    CONSTRAINT chk_role CHECK (role IN ('admin','manager','member','viewer'))
+);`
+};
+
+// ─── GLOBAL STATE ───────────────────────────────────────────────────────────
+const State = {
+  tables: [],
+  relationships: [],
+  // Canvas transform
+  offsetX: 0,
+  offsetY: 0,
+  scale: 1,
+  // Drag state
+  isDragging: false,
+  dragStartX: 0,
+  dragStartY: 0,
+  dragOffsetX: 0,
+  dragOffsetY: 0,
+  // Table drag
+  draggingTable: null,
+  tableDragOffsetX: 0,
+  tableDragOffsetY: 0,
+  // Hover
+  hoveredColumn: null,
+  // Layout positions
+  tablePositions: new Map(),
+};
+
+// ─── TABLE RENDERING CONFIG ─────────────────────────────────────────────────
+const RENDER = {
+  tablePadding: 0,
+  headerHeight: 36,
+  rowHeight: 26,
+  tableMinWidth: 240,
+  tableMaxWidth: 380,
+  tableBorderRadius: 10,
+  shadowBlur: 18,
+  shadowColor: 'rgba(0,0,0,0.45)',
+  fontFamily: '"Segoe UI", system-ui, sans-serif',
+  fontMono: '"Cascadia Code", "Fira Code", Consolas, monospace',
+  // Colors
+  headerGradientStart: '#3b4880',
+  headerGradientEnd: '#2d3562',
+  headerText: '#e0e6ff',
+  rowBg: '#1e2030',
+  rowBgAlt: '#232740',
+  rowText: '#b4bcd0',
+  pkColor: '#e0af68',
+  fkColor: '#7aa2f7',
+  ukColor: '#9ece6a',
+  nnColor: '#f7768e',
+  typeColor: '#7dcfff',
+  defaultColor: '#bb9af7',
+  checkColor: '#ff9e64',
+  borderColor: '#3b4261',
+  // Relationship lines
+  lineColors: ['#7aa2f7','#9ece6a','#e0af68','#bb9af7','#f7768e','#7dcfff','#ff9e64','#73daca'],
+  lineWidth: 2,
+  gridColor: 'rgba(59,66,97,0.25)',
+  gridSize: 30,
+};
+
+// ─── DOM REFERENCES ─────────────────────────────────────────────────────────
+const canvas = document.getElementById('erCanvas');
+const ctx = canvas.getContext('2d');
+const sqlEditor = document.getElementById('sqlEditor');
+const panelLeft = document.getElementById('panelLeft');
+const panelRight = document.getElementById('panelRight');
+const resizeHandle = document.getElementById('resizeHandle');
+const watermark = document.getElementById('watermark');
+const tooltip = document.getElementById('canvasTooltip');
+
+// ─── CANVAS SETUP ───────────────────────────────────────────────────────────
+function resizeCanvas() {
+  const rect = panelRight.getBoundingClientRect();
+  canvas.width = rect.width * window.devicePixelRatio;
+  canvas.height = rect.height * window.devicePixelRatio;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+  render();
+}
+window.addEventListener('resize', resizeCanvas);
+setTimeout(resizeCanvas, 50);
+
+// ─── PANEL RESIZE ───────────────────────────────────────────────────────────
+let isResizing = false;
+resizeHandle.addEventListener('mousedown', (e) => { isResizing = true; resizeHandle.classList.add('active'); e.preventDefault(); });
+document.addEventListener('mousemove', (e) => {
+  if (!isResizing) return;
+  const newWidth = e.clientX;
+  if (newWidth >= 320 && newWidth <= 600) {
+    panelLeft.style.width = newWidth + 'px';
+    resizeCanvas();
+  }
+});
+document.addEventListener('mouseup', () => { isResizing = false; resizeHandle.classList.remove('active'); });
+
+// ─── LINE COUNT ─────────────────────────────────────────────────────────────
+sqlEditor.addEventListener('input', () => {
+  const lines = sqlEditor.value.split('\n').length;
+  document.getElementById('lineCount').textContent = `Líneas: ${lines}`;
+});
+
+// ─── EXAMPLES DROPDOWN ──────────────────────────────────────────────────────
+const examplesDropdown = document.getElementById('examplesDropdown');
+document.getElementById('btnExamples').addEventListener('click', (e) => {
+  e.stopPropagation();
+  examplesDropdown.classList.toggle('show');
+});
+document.addEventListener('click', () => examplesDropdown.classList.remove('show'));
+examplesDropdown.querySelectorAll('a').forEach(a => {
+  a.addEventListener('click', () => {
+    const key = a.dataset.example;
+    if (SQL_EXAMPLES[key]) {
+      sqlEditor.value = SQL_EXAMPLES[key];
+      sqlEditor.dispatchEvent(new Event('input'));
+      examplesDropdown.classList.remove('show');
+      showToast('Ejemplo cargado. Haz clic en "Generar Diagrama".', 'info', 3000);
+    }
+  });
+});
+
+// ─── CLEAR ──────────────────────────────────────────────────────────────────
+document.getElementById('btnClear').addEventListener('click', () => {
+  sqlEditor.value = '';
+  sqlEditor.dispatchEvent(new Event('input'));
+  State.tables = [];
+  State.relationships = [];
+  State.tablePositions.clear();
+  watermark.style.display = '';
+  document.getElementById('statsBar').style.display = 'none';
+  render();
+});
+
+// ===========================================================================
+// SQL PARSER MODULE
+// ===========================================================================
+
+function parseSQL(sql) {
+  const tables = [];
+  const relationships = [];
+  const tableMap = {};
+
+  // Remove block comments but preserve line structure
+  let cleaned = sql.replace(/\/\*[\s\S]*?\*\//g, '');
+  // Remove single-line comments
+  cleaned = cleaned.replace(/--.*/g, '');
+
+  // Normalize whitespace
+  const normalized = cleaned.replace(/\r\n/g, '\n');
+
+  // ── Extract CREATE TABLE statements using balanced parenthesis parser ──
+  const ctRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?:"?(\w+)"?\.)?"?(\w+)"?)\s*\(/gi;
+  let match;
+  
+  while ((match = ctRegex.exec(normalized)) !== null) {
+    const schema = match[1] || null;
+    const tableName = match[2];
+    const bodyStart = match.index + match[0].length;
+    
+    // Find the matching closing parenthesis using balanced counting
+    let depth = 1;
+    let i = bodyStart;
+    let inStr = false;
+    let strCh = '';
+    while (i < normalized.length && depth > 0) {
+      const ch = normalized[i];
+      if (inStr) {
+        if (ch === strCh && normalized[i - 1] !== '\\') inStr = false;
+      } else {
+        if (ch === "'" || ch === '"') { inStr = true; strCh = ch; }
+        else if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+      }
+      if (depth > 0) i++;
+    }
+    
+    if (depth !== 0) continue; // unbalanced, skip
+    
+    const body = normalized.substring(bodyStart, i);
+    
+    const table = {
+      name: tableName,
+      schema: schema,
+      columns: [],
+      constraints: []
+    };
+
+    // Parse the body - split by commas but respect parentheses and strings
+    const parts = splitByComma(body);
+    
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+
+      // Check if it's a table-level constraint
+      if (/^\s*(CONSTRAINT\s+\w+\s+)?(PRIMARY\s+KEY|FOREIGN\s+KEY|UNIQUE|CHECK)\s*/i.test(trimmed)) {
+        parseTableConstraint(trimmed, table, tableName, relationships);
+      } else {
+        // It's a column definition
+        const col = parseColumnDef(trimmed, tableName, relationships);
+        if (col) table.columns.push(col);
+      }
+    }
+    
+    tables.push(table);
+    tableMap[tableName.toLowerCase()] = table;
+  }
+
+  // ── Extract ALTER TABLE ... ADD CONSTRAINT (FOREIGN KEY) ──
+  const alterRegex = /ALTER\s+TABLE\s+(?:(?:"?\w+"?\.)?"?(\w+)"?)\s+ADD\s+CONSTRAINT\s+"?(\w+)"?\s+FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(?:(?:"?\w+"?\.)?"?(\w+)"?)\s*\(([^)]+)\)/gi;
+  
+  while ((match = alterRegex.exec(normalized)) !== null) {
+    const fromTable = match[1];
+    const constraintName = match[2];
+    const fromCols = match[3].split(',').map(c => c.trim().replace(/"/g, ''));
+    const toTable = match[4];
+    const toCols = match[5].split(',').map(c => c.trim().replace(/"/g, ''));
+
+    relationships.push({
+      name: constraintName,
+      from: { table: fromTable, columns: fromCols },
+      to: { table: toTable, columns: toCols },
+      type: fromCols.length > 1 ? 'many-to-many' : 'many-to-one'
+    });
+
+    // Mark FK columns
+    const tbl = tableMap[fromTable.toLowerCase()];
+    if (tbl) {
+      for (const col of tbl.columns) {
+        if (fromCols.map(c => c.toLowerCase()).includes(col.name.toLowerCase())) {
+          col.fk = { table: toTable, column: toCols[0] };
+        }
+      }
+    }
+  }
+
+  // Deduplicate relationships
+  const relSet = new Set();
+  const uniqueRels = [];
+  for (const rel of relationships) {
+    const key = `${rel.from.table}.${rel.from.columns.join(',')}->${rel.to.table}.${rel.to.columns.join(',')}`;
+    if (!relSet.has(key.toLowerCase())) {
+      relSet.add(key.toLowerCase());
+      uniqueRels.push(rel);
+    }
+  }
+
+  return { tables, relationships: uniqueRels };
+}
+
+function splitByComma(str) {
+  const parts = [];
+  let depth = 0;
+  let current = '';
+  let inString = false;
+  let stringChar = '';
+  
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    
+    if (inString) {
+      current += ch;
+      if (ch === stringChar && str[i - 1] !== '\\') inString = false;
+      continue;
+    }
+    
+    if (ch === "'" || ch === '"') {
+      inString = true;
+      stringChar = ch;
+      current += ch;
+      continue;
+    }
+    
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    
+    if (ch === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) parts.push(current);
+  return parts;
+}
+
+function parseColumnDef(def, tableName, relationships) {
+  // Match: column_name TYPE ... constraints ...
+  const colRegex = /^"?(\w+)"?\s+([\w\s\(\),\[\]]+?)(?:\s+((?:NOT\s+NULL|NULL|PRIMARY\s+KEY|UNIQUE|DEFAULT\s+.+?|CHECK\s*\(.+?\)|REFERENCES\s+.+?|ON\s+DELETE\s+.+?|ON\s+UPDATE\s+.+?|GENERATED\s+.+?|CONSTRAINT\s+.+?)(?:\s+(?:NOT\s+NULL|NULL|PRIMARY\s+KEY|UNIQUE|DEFAULT\s+.+?|CHECK\s*\(.+?\)|REFERENCES\s+.+?|ON\s+DELETE\s+.+?|ON\s+UPDATE\s+.+?|GENERATED\s+.+?|CONSTRAINT\s+.+?))*))?$/i;
+
+  // Simpler approach: extract name and type first, then parse rest for constraints
+  const tokens = def.trim().split(/\s+/);
+  if (tokens.length < 2) return null;
+  
+  const name = tokens[0].replace(/"/g, '');
+  
+  // Skip if it looks like a keyword
+  if (/^(CONSTRAINT|PRIMARY|FOREIGN|UNIQUE|CHECK|INDEX|KEY)$/i.test(name)) return null;
+  
+  // Extract the type - could be multi-word like "TIMESTAMP WITH TIME ZONE", "CHARACTER VARYING(255)"
+  let typeStr = '';
+  let restStartIdx = 1;
+  
+  // Build type string
+  const upperDef = def.toUpperCase();
+  const afterName = def.substring(name.length).trim().replace(/^"/, '');
+  
+  // Match the type portion
+  const typeMatch = afterName.match(/^((?:BIGSERIAL|SERIAL|SMALLSERIAL|BIGINT|SMALLINT|INTEGER|INT|INT2|INT4|INT8|TINYINT|MEDIUMINT|DOUBLE\s+PRECISION|REAL|FLOAT|NUMERIC|DECIMAL|MONEY|BOOLEAN|BOOL|BIT|VARBIT|UUID|TEXT|CITEXT|VARCHAR|NVARCHAR|CHARACTER\s+VARYING|CHARACTER|CHAR|NCHAR|BYTEA|BLOB|CLOB|MEDIUMTEXT|LONGTEXT|TINYTEXT|DATE|TIME|TIMETZ|TIMESTAMP|TIMESTAMPTZ|TIMESTAMP\s+WITH(?:OUT)?\s+TIME\s+ZONE|TIME\s+WITH(?:OUT)?\s+TIME\s+ZONE|INTERVAL|INET|CIDR|MACADDR|JSON|JSONB|XML|POINT|LINE|LSEG|BOX|PATH|POLYGON|CIRCLE|TSQUERY|TSVECTOR|ENUM|SET|GEOMETRY|GEOGRAPHY|HSTORE|ARRAY|OID|REGCLASS|INT\[\]|TEXT\[\]|INTEGER\[\]|VARCHAR\[\]|FLOAT\[\])(?:\s*\([^)]*\))?(?:\s*\[\s*\])*)/i);
+  
+  if (typeMatch) {
+    typeStr = typeMatch[1].trim();
+    restStartIdx = typeMatch[0].length;
+  } else {
+    // Fallback: take the first token after name as type
+    const simpleType = afterName.match(/^(\w+(?:\s*\([^)]*\))?(?:\s*\[\s*\])*)/i);
+    if (simpleType) {
+      typeStr = simpleType[1].trim();
+      restStartIdx = simpleType[0].length;
+    } else {
+      typeStr = tokens[1];
+      restStartIdx = tokens[1].length;
+    }
+  }
+  
+  const rest = afterName.substring(restStartIdx).trim();
+  
+  const col = {
+    name: name,
+    type: typeStr.toUpperCase(),
+    pk: false,
+    fk: null,
+    unique: false,
+    notNull: false,
+    defaultVal: null,
+    check: null,
+    autoIncrement: false,
+  };
+
+  // Check if type implies PK / auto-increment
+  if (/SERIAL/i.test(typeStr)) {
+    col.autoIncrement = true;
+    col.notNull = true;
+  }
+
+  // Parse constraints from rest
+  const upperRest = rest.toUpperCase();
+  
+  if (/PRIMARY\s+KEY/i.test(rest)) { col.pk = true; col.notNull = true; }
+  if (/\bUNIQUE\b/i.test(rest)) col.unique = true;
+  if (/\bNOT\s+NULL\b/i.test(rest)) col.notNull = true;
+  if (/\bNULL\b/i.test(rest) && !/\bNOT\s+NULL\b/i.test(rest)) col.notNull = false;
+  
+  // Auto increment keywords
+  if (/AUTO_INCREMENT|AUTOINCREMENT|GENERATED\s+(ALWAYS|BY\s+DEFAULT)\s+AS\s+IDENTITY/i.test(rest)) {
+    col.autoIncrement = true;
+  }
+
+  // DEFAULT
+  const defaultMatch = rest.match(/DEFAULT\s+('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|\S+)/i);
+  if (defaultMatch) col.defaultVal = defaultMatch[1];
+
+  // CHECK
+  const checkMatch = rest.match(/CHECK\s*(\([^)]*(?:\([^)]*\)[^)]*)*\))/i);
+  if (checkMatch) col.check = checkMatch[1];
+
+  // REFERENCES (inline FK)
+  const refMatch = rest.match(/REFERENCES\s+(?:(?:"?\w+"?\.)?"?(\w+)"?)\s*\(\s*"?(\w+)"?\s*\)/i);
+  if (refMatch) {
+    col.fk = { table: refMatch[1], column: refMatch[2] };
+    relationships.push({
+      name: `fk_${tableName}_${name}`,
+      from: { table: tableName, columns: [name] },
+      to: { table: refMatch[1], columns: [refMatch[2]] },
+      type: 'many-to-one'
+    });
+  }
+  
+  return col;
+}
+
+function parseTableConstraint(def, table, tableName, relationships) {
+  const upper = def.toUpperCase();
+  
+  // PRIMARY KEY
+  const pkMatch = def.match(/PRIMARY\s+KEY\s*\(([^)]+)\)/i);
+  if (pkMatch) {
+    const cols = pkMatch[1].split(',').map(c => c.trim().replace(/"/g, ''));
+    for (const col of table.columns) {
+      if (cols.map(c => c.toLowerCase()).includes(col.name.toLowerCase())) {
+        col.pk = true;
+        col.notNull = true;
+      }
+    }
+    table.constraints.push({ type: 'PK', columns: cols });
+    return;
+  }
+
+  // UNIQUE
+  const uqMatch = def.match(/UNIQUE\s*\(([^)]+)\)/i);
+  if (uqMatch) {
+    const cols = uqMatch[1].split(',').map(c => c.trim().replace(/"/g, ''));
+    for (const col of table.columns) {
+      if (cols.map(c => c.toLowerCase()).includes(col.name.toLowerCase())) {
+        col.unique = true;
+      }
+    }
+    table.constraints.push({ type: 'UNIQUE', columns: cols });
+    return;
+  }
+
+  // FOREIGN KEY
+  const fkMatch = def.match(/FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+(?:(?:"?\w+"?\.)?"?(\w+)"?)\s*\(([^)]+)\)/i);
+  if (fkMatch) {
+    const fromCols = fkMatch[1].split(',').map(c => c.trim().replace(/"/g, ''));
+    const toTable = fkMatch[2];
+    const toCols = fkMatch[3].split(',').map(c => c.trim().replace(/"/g, ''));
+    
+    for (const col of table.columns) {
+      if (fromCols.map(c => c.toLowerCase()).includes(col.name.toLowerCase())) {
+        col.fk = { table: toTable, column: toCols[0] };
+      }
+    }
+    
+    relationships.push({
+      name: `fk_${tableName}_${fromCols.join('_')}`,
+      from: { table: tableName, columns: fromCols },
+      to: { table: toTable, columns: toCols },
+      type: fromCols.length > 1 ? 'many-to-many' : 'many-to-one'
+    });
+    
+    table.constraints.push({ type: 'FK', columns: fromCols, refTable: toTable, refColumns: toCols });
+    return;
+  }
+
+  // CHECK
+  const chkMatch = def.match(/CHECK\s*(\([^)]*(?:\([^)]*\)[^)]*)*\))/i);
+  if (chkMatch) {
+    table.constraints.push({ type: 'CHECK', expression: chkMatch[1] });
+    return;
+  }
+}
+
+// ===========================================================================
+// LAYOUT ENGINE
+// ===========================================================================
+
+function computeLayout(tables, relationships) {
+  const positions = new Map();
+  if (tables.length === 0) return positions;
+
+  // Compute table dimensions first
+  const dims = new Map();
+  for (const t of tables) {
+    const w = computeTableWidth(t);
+    const h = RENDER.headerHeight + t.columns.length * RENDER.rowHeight + 8;
+    dims.set(t.name, { w, h });
+  }
+
+  // Build adjacency info for relationship-aware layout
+  const adj = new Map();
+  for (const t of tables) adj.set(t.name, new Set());
+  for (const r of relationships) {
+    if (adj.has(r.from.table) && adj.has(r.to.table)) {
+      adj.get(r.from.table).add(r.to.table);
+      adj.get(r.to.table).add(r.from.table);
+    }
+  }
+
+  // Sort tables: most connected first (central placement)
+  const sorted = [...tables].sort((a, b) => {
+    const da = adj.get(a.name)?.size || 0;
+    const db = adj.get(b.name)?.size || 0;
+    return db - da;
+  });
+
+  // Grid layout with spacing
+  const paddingX = 60;
+  const paddingY = 50;
+  const spacingX = 80;
+  const spacingY = 60;
+  const cols = Math.max(1, Math.ceil(Math.sqrt(tables.length)));
+
+  let x = paddingX;
+  let y = paddingY;
+  let rowMaxH = 0;
+  let colIndex = 0;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const t = sorted[i];
+    const dim = dims.get(t.name);
+    
+    positions.set(t.name, { x, y, w: dim.w, h: dim.h });
+    
+    rowMaxH = Math.max(rowMaxH, dim.h);
+    colIndex++;
+    
+    if (colIndex >= cols) {
+      colIndex = 0;
+      x = paddingX;
+      y += rowMaxH + spacingY;
+      rowMaxH = 0;
+    } else {
+      x += dim.w + spacingX;
+    }
+  }
+
+  // Simple force-directed adjustment to reduce line crossings (few iterations)
+  for (let iter = 0; iter < 50; iter++) {
+    let moved = false;
+    for (const r of relationships) {
+      const posA = positions.get(r.from.table);
+      const posB = positions.get(r.to.table);
+      if (!posA || !posB) continue;
+
+      const dx = (posB.x + posB.w / 2) - (posA.x + posA.w / 2);
+      const dy = (posB.y + posB.h / 2) - (posA.y + posA.h / 2);
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const idealDist = 400;
+
+      if (dist > 0 && Math.abs(dist - idealDist) > 20) {
+        const force = (dist - idealDist) * 0.02;
+        const fx = (dx / dist) * force;
+        const fy = (dy / dist) * force;
+        posA.x += fx * 0.5;
+        posA.y += fy * 0.5;
+        posB.x -= fx * 0.5;
+        posB.y -= fy * 0.5;
+        moved = true;
+      }
+    }
+
+    // Repulsion between overlapping tables
+    const tableList = [...positions.entries()];
+    for (let i = 0; i < tableList.length; i++) {
+      for (let j = i + 1; j < tableList.length; j++) {
+        const [, a] = tableList[i];
+        const [, b] = tableList[j];
+        const overlapX = (a.x + a.w + 20) - b.x;
+        const overlapY = (a.y + a.h + 20) - b.y;
+        if (a.x < b.x + b.w + 20 && a.x + a.w + 20 > b.x &&
+            a.y < b.y + b.h + 20 && a.y + a.h + 20 > b.y) {
+          // Overlap detected, push apart
+          const cx = (a.x + a.w / 2) - (b.x + b.w / 2);
+          const cy = (a.y + a.h / 2) - (b.y + b.h / 2);
+          const d = Math.sqrt(cx * cx + cy * cy) || 1;
+          const push = 8;
+          a.x += (cx / d) * push;
+          a.y += (cy / d) * push;
+          b.x -= (cx / d) * push;
+          b.y -= (cy / d) * push;
+          moved = true;
+        }
+      }
+    }
+    if (!moved) break;
+  }
+
+  // Ensure no negative positions
+  let minX = Infinity, minY = Infinity;
+  for (const [, pos] of positions) {
+    minX = Math.min(minX, pos.x);
+    minY = Math.min(minY, pos.y);
+  }
+  if (minX < paddingX || minY < paddingY) {
+    const shiftX = minX < paddingX ? paddingX - minX : 0;
+    const shiftY = minY < paddingY ? paddingY - minY : 0;
+    for (const [, pos] of positions) {
+      pos.x += shiftX;
+      pos.y += shiftY;
+    }
+  }
+
+  return positions;
+}
+
+function computeTableWidth(table) {
+  // Estimate based on longest column + type + icons
+  ctx.font = `bold 13px ${RENDER.fontFamily}`;
+  let maxW = ctx.measureText(table.name).width + 60; // header with icon
+
+  ctx.font = `12px ${RENDER.fontMono}`;
+  for (const col of table.columns) {
+    const icons = getColumnIcons(col);
+    const text = `${icons.join('')} ${col.name}  ${col.type}`;
+    const w = ctx.measureText(text).width + 40;
+    maxW = Math.max(maxW, w);
+  }
+
+  return Math.max(RENDER.tableMinWidth, Math.min(RENDER.tableMaxWidth, maxW + 30));
+}
+
+function getColumnIcons(col) {
+  const icons = [];
+  if (col.pk) icons.push('🔑');
+  if (col.fk) icons.push('🔗');
+  if (col.unique && !col.pk) icons.push('◆');
+  return icons;
+}
+
+// ===========================================================================
+// CANVAS RENDERER
+// ===========================================================================
+
+function render() {
+  const w = canvas.width / window.devicePixelRatio;
+  const h = canvas.height / window.devicePixelRatio;
+  
+  ctx.save();
+  ctx.clearRect(0, 0, w, h);
+
+  // Background
+  ctx.fillStyle = '#16171f';
+  ctx.fillRect(0, 0, w, h);
+
+  // Grid
+  drawGrid(w, h);
+
+  // Apply transform
+  ctx.translate(State.offsetX, State.offsetY);
+  ctx.scale(State.scale, State.scale);
+
+  // Draw relationships (lines) first (behind tables)
+  drawRelationships();
+
+  // Draw tables
+  for (const table of State.tables) {
+    const pos = State.tablePositions.get(table.name);
+    if (pos) drawTable(table, pos);
+  }
+
+  ctx.restore();
+}
+
+function drawGrid(w, h) {
+  const gs = RENDER.gridSize;
+  ctx.strokeStyle = RENDER.gridColor;
+  ctx.lineWidth = 0.5;
+  
+  const startX = State.offsetX % (gs * State.scale);
+  const startY = State.offsetY % (gs * State.scale);
+  
+  ctx.beginPath();
+  for (let x = startX; x < w; x += gs * State.scale) {
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+  }
+  for (let y = startY; y < h; y += gs * State.scale) {
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+  }
+  ctx.stroke();
+}
+
+function drawTable(table, pos) {
+  const { x, y, w } = pos;
+  const h = RENDER.headerHeight + table.columns.length * RENDER.rowHeight + 8;
+  pos.h = h;
+  
+  // Shadow
+  ctx.save();
+  ctx.shadowColor = RENDER.shadowColor;
+  ctx.shadowBlur = RENDER.shadowBlur;
+  ctx.shadowOffsetX = 3;
+  ctx.shadowOffsetY = 5;
+  
+  // Table body background
+  ctx.fillStyle = RENDER.rowBg;
+  roundRect(ctx, x, y, w, h, RENDER.tableBorderRadius);
+  ctx.fill();
+  ctx.restore();
+
+  // Border
+  ctx.strokeStyle = RENDER.borderColor;
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, x, y, w, h, RENDER.tableBorderRadius);
+  ctx.stroke();
+
+  // Header
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x + RENDER.tableBorderRadius, y);
+  ctx.lineTo(x + w - RENDER.tableBorderRadius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + RENDER.tableBorderRadius);
+  ctx.lineTo(x + w, y + RENDER.headerHeight);
+  ctx.lineTo(x, y + RENDER.headerHeight);
+  ctx.lineTo(x, y + RENDER.tableBorderRadius);
+  ctx.quadraticCurveTo(x, y, x + RENDER.tableBorderRadius, y);
+  ctx.closePath();
+  
+  const grad = ctx.createLinearGradient(x, y, x + w, y + RENDER.headerHeight);
+  grad.addColorStop(0, RENDER.headerGradientStart);
+  grad.addColorStop(1, RENDER.headerGradientEnd);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.restore();
+
+  // Header text
+  ctx.font = `bold 14px ${RENDER.fontFamily}`;
+  ctx.fillStyle = RENDER.headerText;
+  ctx.textBaseline = 'middle';
+  const headerText = (table.schema ? table.schema + '.' : '') + table.name;
+  ctx.fillText('📋 ' + headerText, x + 12, y + RENDER.headerHeight / 2);
+
+  // Column count badge
+  ctx.font = `10px ${RENDER.fontFamily}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${table.columns.length} cols`, x + w - 10, y + RENDER.headerHeight / 2);
+  ctx.textAlign = 'left';
+
+  // Separator
+  ctx.strokeStyle = RENDER.borderColor;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y + RENDER.headerHeight);
+  ctx.lineTo(x + w, y + RENDER.headerHeight);
+  ctx.stroke();
+
+  // Columns
+  for (let i = 0; i < table.columns.length; i++) {
+    const col = table.columns[i];
+    const rowY = y + RENDER.headerHeight + i * RENDER.rowHeight;
+    
+    // Alternating row background
+    if (i % 2 === 1) {
+      ctx.fillStyle = RENDER.rowBgAlt;
+      
+      // Handle last row with rounded corners
+      if (i === table.columns.length - 1) {
+        ctx.beginPath();
+        ctx.moveTo(x, rowY);
+        ctx.lineTo(x + w, rowY);
+        ctx.lineTo(x + w, y + h - RENDER.tableBorderRadius);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - RENDER.tableBorderRadius, y + h);
+        ctx.lineTo(x + RENDER.tableBorderRadius, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - RENDER.tableBorderRadius);
+        ctx.lineTo(x, rowY);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.fillRect(x + 1, rowY, w - 2, RENDER.rowHeight);
+      }
+    }
+    
+    const textY = rowY + RENDER.rowHeight / 2;
+    let textX = x + 10;
+
+    // Icons
+    const icons = [];
+    if (col.pk) icons.push({ text: '🔑', color: RENDER.pkColor });
+    if (col.fk) icons.push({ text: '🔗', color: RENDER.fkColor });
+    if (col.unique && !col.pk) icons.push({ text: '◆', color: RENDER.ukColor });
+    
+    ctx.font = `12px ${RENDER.fontFamily}`;
+    ctx.textBaseline = 'middle';
+    for (const icon of icons) {
+      ctx.fillText(icon.text, textX, textY);
+      textX += 18;
+    }
+    if (icons.length === 0) textX += 4;
+
+    // Column name
+    ctx.font = col.pk ? `bold 12px ${RENDER.fontMono}` : `12px ${RENDER.fontMono}`;
+    ctx.fillStyle = col.pk ? RENDER.pkColor : (col.fk ? RENDER.fkColor : RENDER.rowText);
+    ctx.fillText(col.name, textX, textY);
+    
+    // Type (right-aligned)
+    ctx.font = `11px ${RENDER.fontMono}`;
+    ctx.fillStyle = RENDER.typeColor;
+    ctx.textAlign = 'right';
+    
+    let typeText = col.type;
+    if (typeText.length > 22) typeText = typeText.substring(0, 20) + '…';
+    
+    let typeX = x + w - 10;
+    
+    // Constraint badges
+    const badges = [];
+    if (col.notNull && !col.pk) badges.push({ text: 'NN', color: RENDER.nnColor });
+    if (col.autoIncrement) badges.push({ text: 'AI', color: RENDER.defaultColor });
+    if (col.defaultVal) badges.push({ text: 'D', color: RENDER.defaultColor });
+    if (col.check) badges.push({ text: 'CK', color: RENDER.checkColor });
+    
+    ctx.font = `bold 9px ${RENDER.fontFamily}`;
+    for (let b = badges.length - 1; b >= 0; b--) {
+      const badge = badges[b];
+      const bw = ctx.measureText(badge.text).width + 8;
+      const bx = typeX - bw;
+      const by = textY - 7;
+      
+      ctx.fillStyle = badge.color + '22';
+      ctx.strokeStyle = badge.color + '66';
+      ctx.lineWidth = 1;
+      roundRect(ctx, bx, by, bw, 14, 3);
+      ctx.fill();
+      roundRect(ctx, bx, by, bw, 14, 3);
+      ctx.stroke();
+      
+      ctx.fillStyle = badge.color;
+      ctx.textAlign = 'center';
+      ctx.fillText(badge.text, bx + bw / 2, textY);
+      
+      typeX = bx - 5;
+    }
+    
+    // Draw type
+    ctx.font = `11px ${RENDER.fontMono}`;
+    ctx.fillStyle = RENDER.typeColor;
+    ctx.textAlign = 'right';
+    ctx.fillText(typeText, typeX, textY);
+    
+    ctx.textAlign = 'left';
+  }
+}
+
+function drawRelationships() {
+  for (let i = 0; i < State.relationships.length; i++) {
+    const rel = State.relationships[i];
+    const fromPos = State.tablePositions.get(rel.from.table);
+    const toPos = State.tablePositions.get(rel.to.table);
+    if (!fromPos || !toPos) continue;
+
+    // Find column positions
+    const fromTable = State.tables.find(t => t.name === rel.from.table);
+    const toTable = State.tables.find(t => t.name === rel.to.table);
+    if (!fromTable || !toTable) continue;
+
+    const fromColIdx = fromTable.columns.findIndex(c => 
+      rel.from.columns.map(cc => cc.toLowerCase()).includes(c.name.toLowerCase()));
+    const toColIdx = toTable.columns.findIndex(c => 
+      rel.to.columns.map(cc => cc.toLowerCase()).includes(c.name.toLowerCase()));
+
+    const fromColY = fromPos.y + RENDER.headerHeight + (fromColIdx >= 0 ? fromColIdx : 0) * RENDER.rowHeight + RENDER.rowHeight / 2;
+    const toColY = toPos.y + RENDER.headerHeight + (toColIdx >= 0 ? toColIdx : 0) * RENDER.rowHeight + RENDER.rowHeight / 2;
+
+    // Determine connection sides
+    const fromCenterX = fromPos.x + fromPos.w / 2;
+    const toCenterX = toPos.x + toPos.w / 2;
+    
+    let fromX, toX, fromSide, toSide;
+    
+    if (fromCenterX < toCenterX) {
+      fromX = fromPos.x + fromPos.w;
+      toX = toPos.x;
+      fromSide = 'right';
+      toSide = 'left';
+    } else {
+      fromX = fromPos.x;
+      toX = toPos.x + toPos.w;
+      fromSide = 'left';
+      toSide = 'right';
+    }
+
+    const color = RENDER.lineColors[i % RENDER.lineColors.length];
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = RENDER.lineWidth;
+    ctx.setLineDash([]);
+
+    // Draw bezier curve
+    const cpOffset = Math.min(80, Math.abs(toX - fromX) * 0.4);
+    const cp1x = fromSide === 'right' ? fromX + cpOffset : fromX - cpOffset;
+    const cp2x = toSide === 'left' ? toX - cpOffset : toX + cpOffset;
+
+    ctx.beginPath();
+    ctx.moveTo(fromX, fromColY);
+    ctx.bezierCurveTo(cp1x, fromColY, cp2x, toColY, toX, toColY);
+    ctx.stroke();
+
+    // Draw crow's foot notation
+    // "Many" side (from table = FK side) gets crow's foot
+    drawCrowsFoot(fromX, fromColY, fromSide, 'many', color);
+    // "One" side (to table = PK side) gets single line
+    drawCrowsFoot(toX, toColY, toSide, 'one', color);
+  }
+}
+
+function drawCrowsFoot(x, y, side, cardinality, color) {
+  const dir = side === 'right' ? 1 : -1;
+  const size = 12;
+  
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2;
+
+  if (cardinality === 'many') {
+    // Crow's foot (three lines spreading out)
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + dir * size, y - size * 0.6);
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + dir * size, y);
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + dir * size, y + size * 0.6);
+    ctx.stroke();
+    
+    // Vertical line at the tip
+    ctx.beginPath();
+    ctx.moveTo(x + dir * (size + 3), y - size * 0.6);
+    ctx.lineTo(x + dir * (size + 3), y + size * 0.6);
+    ctx.stroke();
+  } else {
+    // "One" side - single vertical line
+    ctx.beginPath();
+    ctx.moveTo(x - dir * 3, y - 8);
+    ctx.lineTo(x - dir * 3, y + 8);
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.moveTo(x - dir * 7, y - 8);
+    ctx.lineTo(x - dir * 7, y + 8);
+    ctx.stroke();
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ===========================================================================
+// INTERACTIVITY
+// ===========================================================================
+
+// ── Zoom ──
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.max(0.1, Math.min(4, State.scale * delta));
+  
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  
+  // Zoom towards mouse position
+  State.offsetX = mx - (mx - State.offsetX) * (newScale / State.scale);
+  State.offsetY = my - (my - State.offsetY) * (newScale / State.scale);
+  State.scale = newScale;
+  
+  document.getElementById('zoomIndicator').textContent = Math.round(State.scale * 100) + '%';
+  render();
+}, { passive: false });
+
+document.getElementById('btnZoomIn').addEventListener('click', () => zoom(1.2));
+document.getElementById('btnZoomOut').addEventListener('click', () => zoom(0.8));
+document.getElementById('btnResetView').addEventListener('click', resetView);
+document.getElementById('btnFitView').addEventListener('click', fitView);
+
+function zoom(factor) {
+  const rect = canvas.getBoundingClientRect();
+  const cx = rect.width / 2;
+  const cy = rect.height / 2;
+  const newScale = Math.max(0.1, Math.min(4, State.scale * factor));
+  State.offsetX = cx - (cx - State.offsetX) * (newScale / State.scale);
+  State.offsetY = cy - (cy - State.offsetY) * (newScale / State.scale);
+  State.scale = newScale;
+  document.getElementById('zoomIndicator').textContent = Math.round(State.scale * 100) + '%';
+  render();
+}
+
+function resetView() {
+  State.offsetX = 0;
+  State.offsetY = 0;
+  State.scale = 1;
+  document.getElementById('zoomIndicator').textContent = '100%';
+  render();
+}
+
+function fitView() {
+  if (State.tables.length === 0) return;
+  
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [, pos] of State.tablePositions) {
+    minX = Math.min(minX, pos.x);
+    minY = Math.min(minY, pos.y);
+    maxX = Math.max(maxX, pos.x + pos.w);
+    maxY = Math.max(maxY, pos.y + pos.h);
+  }
+  
+  const rect = panelRight.getBoundingClientRect();
+  const padding = 60;
+  const contentW = maxX - minX + padding * 2;
+  const contentH = maxY - minY + padding * 2;
+  
+  const scaleX = rect.width / contentW;
+  const scaleY = rect.height / contentH;
+  State.scale = Math.min(scaleX, scaleY, 1.5);
+  
+  State.offsetX = (rect.width - contentW * State.scale) / 2 - minX * State.scale + padding * State.scale;
+  State.offsetY = (rect.height - contentH * State.scale) / 2 - minY * State.scale + padding * State.scale;
+  
+  document.getElementById('zoomIndicator').textContent = Math.round(State.scale * 100) + '%';
+  render();
+}
+
+// ── Pan & Drag Tables ──
+canvas.addEventListener('mousedown', (e) => {
+  const { worldX, worldY } = screenToWorld(e.clientX, e.clientY);
+  
+  // Check if clicking on a table
+  for (const table of State.tables) {
+    const pos = State.tablePositions.get(table.name);
+    if (pos && worldX >= pos.x && worldX <= pos.x + pos.w && worldY >= pos.y && worldY <= pos.y + pos.h) {
+      // Dragging a table
+      State.draggingTable = table.name;
+      State.tableDragOffsetX = worldX - pos.x;
+      State.tableDragOffsetY = worldY - pos.y;
+      canvas.classList.add('moving-table');
+      e.preventDefault();
+      return;
+    }
+  }
+  
+  // Pan
+  State.isDragging = true;
+  State.dragStartX = e.clientX - State.offsetX;
+  State.dragStartY = e.clientY - State.offsetY;
+  canvas.classList.add('grabbing');
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (State.draggingTable) {
+    const { worldX, worldY } = screenToWorld(e.clientX, e.clientY);
+    const pos = State.tablePositions.get(State.draggingTable);
+    if (pos) {
+      pos.x = worldX - State.tableDragOffsetX;
+      pos.y = worldY - State.tableDragOffsetY;
+      render();
+    }
+    return;
+  }
+  
+  if (State.isDragging) {
+    State.offsetX = e.clientX - State.dragStartX;
+    State.offsetY = e.clientY - State.dragStartY;
+    render();
+    return;
+  }
+
+  // Hover detection for tooltip
+  handleHover(e);
+});
+
+canvas.addEventListener('mouseup', () => {
+  State.isDragging = false;
+  State.draggingTable = null;
+  canvas.classList.remove('grabbing');
+  canvas.classList.remove('moving-table');
+});
+
+canvas.addEventListener('mouseleave', () => {
+  State.isDragging = false;
+  State.draggingTable = null;
+  canvas.classList.remove('grabbing');
+  canvas.classList.remove('moving-table');
+  tooltip.style.display = 'none';
+});
+
+function screenToWorld(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = clientX - rect.left;
+  const sy = clientY - rect.top;
+  return {
+    worldX: (sx - State.offsetX) / State.scale,
+    worldY: (sy - State.offsetY) / State.scale,
+  };
+}
+
+function handleHover(e) {
+  const { worldX, worldY } = screenToWorld(e.clientX, e.clientY);
+  
+  for (const table of State.tables) {
+    const pos = State.tablePositions.get(table.name);
+    if (!pos) continue;
+    
+    if (worldX >= pos.x && worldX <= pos.x + pos.w &&
+        worldY >= pos.y + RENDER.headerHeight && worldY <= pos.y + pos.h) {
+      
+      const colIdx = Math.floor((worldY - pos.y - RENDER.headerHeight) / RENDER.rowHeight);
+      if (colIdx >= 0 && colIdx < table.columns.length) {
+        const col = table.columns[colIdx];
+        showColumnTooltip(e.clientX, e.clientY, table, col);
+        return;
+      }
+    }
+  }
+  
+  tooltip.style.display = 'none';
+}
+
+function showColumnTooltip(mx, my, table, col) {
+  let html = `<div class="tt-title">${table.name}.${col.name}</div>`;
+  html += `<div class="tt-row"><span class="tt-label">Tipo:</span> <span class="tt-value">${col.type}</span></div>`;
+  
+  const flags = [];
+  if (col.pk) flags.push('PRIMARY KEY');
+  if (col.fk) flags.push(`FK → ${col.fk.table}(${col.fk.column})`);
+  if (col.unique) flags.push('UNIQUE');
+  if (col.notNull) flags.push('NOT NULL');
+  if (col.autoIncrement) flags.push('AUTO INCREMENT');
+  if (flags.length) html += `<div class="tt-row"><span class="tt-label">Constraints:</span> <span class="tt-value">${flags.join(', ')}</span></div>`;
+  
+  if (col.defaultVal) html += `<div class="tt-row"><span class="tt-label">Default:</span> <span class="tt-value">${col.defaultVal}</span></div>`;
+  if (col.check) html += `<div class="tt-row"><span class="tt-label">Check:</span> <span class="tt-value">${col.check}</span></div>`;
+  
+  tooltip.innerHTML = html;
+  tooltip.style.display = 'block';
+  tooltip.style.left = (mx + 15) + 'px';
+  tooltip.style.top = (my + 15) + 'px';
+  
+  // Keep in viewport
+  const tr = tooltip.getBoundingClientRect();
+  if (tr.right > window.innerWidth) tooltip.style.left = (mx - tr.width - 10) + 'px';
+  if (tr.bottom > window.innerHeight) tooltip.style.top = (my - tr.height - 10) + 'px';
+}
+
+// ===========================================================================
+// GENERATE DIAGRAM
+// ===========================================================================
+
+document.getElementById('btnGenerate').addEventListener('click', generateDiagram);
+
+// Ctrl+Enter shortcut
+sqlEditor.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    generateDiagram();
+  }
+});
+
+function generateDiagram() {
+  const sql = sqlEditor.value.trim();
+  if (!sql) {
+    showToast('Por favor, introduce código SQL primero.', 'error');
+    return;
+  }
+
+  document.getElementById('statusText').textContent = 'Parseando SQL...';
+  
+  try {
+    const result = parseSQL(sql);
+    
+    if (result.tables.length === 0) {
+      showToast('No se encontraron sentencias CREATE TABLE en el SQL proporcionado.', 'error');
+      document.getElementById('statusText').textContent = 'Error: sin tablas';
+      return;
+    }
+
+    State.tables = result.tables;
+    State.relationships = result.relationships;
+    
+    // Compute layout
+    State.tablePositions = computeLayout(result.tables, result.relationships);
+    
+    // Update stats
+    const totalCols = result.tables.reduce((sum, t) => sum + t.columns.length, 0);
+    document.getElementById('statTables').textContent = result.tables.length;
+    document.getElementById('statRelations').textContent = result.relationships.length;
+    document.getElementById('statColumns').textContent = totalCols;
+    document.getElementById('statsBar').style.display = 'flex';
+    
+    // Hide watermark
+    watermark.style.display = 'none';
+    
+    // Fit view to show all tables
+    fitView();
+    
+    document.getElementById('statusText').textContent = `✓ ${result.tables.length} tablas, ${result.relationships.length} relaciones, ${totalCols} columnas`;
+    showToast(`Diagrama generado: ${result.tables.length} tablas, ${result.relationships.length} relaciones`, 'success', 3000);
+    
+  } catch (err) {
+    console.error('Parse error:', err);
+    showToast(`Error al parsear SQL: ${err.message}`, 'error');
+    document.getElementById('statusText').textContent = 'Error de parseo';
+  }
+}
+
+// ===========================================================================
+// PNG EXPORT
+// ===========================================================================
+
+document.getElementById('btnExportPng').addEventListener('click', exportPng);
+
+function exportPng() {
+  if (State.tables.length === 0) {
+    showToast('No hay diagrama para exportar. Genera uno primero.', 'error');
+    return;
+  }
+
+  // Calculate total bounds
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [, pos] of State.tablePositions) {
+    minX = Math.min(minX, pos.x);
+    minY = Math.min(minY, pos.y);
+    maxX = Math.max(maxX, pos.x + pos.w);
+    maxY = Math.max(maxY, pos.y + (pos.h || 400));
+  }
+  
+  const padding = 80;
+  const totalW = maxX - minX + padding * 2;
+  const totalH = maxY - minY + padding * 2;
+  
+  // Create offscreen canvas
+  const exportScale = 2; // Hi-DPI export
+  const offCanvas = document.createElement('canvas');
+  offCanvas.width = totalW * exportScale;
+  offCanvas.height = totalH * exportScale;
+  const offCtx = offCanvas.getContext('2d');
+  
+  offCtx.scale(exportScale, exportScale);
+  
+  // White background for printing
+  offCtx.fillStyle = '#ffffff';
+  offCtx.fillRect(0, 0, totalW, totalH);
+  
+  // Subtle grid on white bg
+  offCtx.strokeStyle = 'rgba(200,200,220,0.3)';
+  offCtx.lineWidth = 0.5;
+  offCtx.beginPath();
+  for (let x = 0; x < totalW; x += RENDER.gridSize) {
+    offCtx.moveTo(x, 0);
+    offCtx.lineTo(x, totalH);
+  }
+  for (let y = 0; y < totalH; y += RENDER.gridSize) {
+    offCtx.moveTo(0, y);
+    offCtx.lineTo(totalW, y);
+  }
+  offCtx.stroke();
+  
+  // Translate to center content
+  offCtx.translate(padding - minX, padding - minY);
+  
+  // Temporarily swap context for drawing functions
+  const origCtx = ctx;
+  const origCanvas = canvas;
+  
+  // Override colors for light theme export
+  const origRowBg = RENDER.rowBg;
+  const origRowBgAlt = RENDER.rowBgAlt;
+  const origRowText = RENDER.rowText;
+  const origBorderColor = RENDER.borderColor;
+  const origHeaderStart = RENDER.headerGradientStart;
+  const origHeaderEnd = RENDER.headerGradientEnd;
+  const origShadowColor = RENDER.shadowColor;
+  
+  RENDER.rowBg = '#f8f9fc';
+  RENDER.rowBgAlt = '#eef1f8';
+  RENDER.rowText = '#3a3f55';
+  RENDER.borderColor = '#c0c8e0';
+  RENDER.headerGradientStart = '#4a5899';
+  RENDER.headerGradientEnd = '#3a4578';
+  RENDER.shadowColor = 'rgba(0,0,0,0.15)';
+  
+  // Use the offscreen context through a proxy approach
+  // Draw relationships
+  for (let i = 0; i < State.relationships.length; i++) {
+    const rel = State.relationships[i];
+    const fromPos = State.tablePositions.get(rel.from.table);
+    const toPos = State.tablePositions.get(rel.to.table);
+    if (!fromPos || !toPos) continue;
+
+    const fromTable = State.tables.find(t => t.name === rel.from.table);
+    const toTable = State.tables.find(t => t.name === rel.to.table);
+    if (!fromTable || !toTable) continue;
+
+    const fromColIdx = fromTable.columns.findIndex(c =>
+      rel.from.columns.map(cc => cc.toLowerCase()).includes(c.name.toLowerCase()));
+    const toColIdx = toTable.columns.findIndex(c =>
+      rel.to.columns.map(cc => cc.toLowerCase()).includes(c.name.toLowerCase()));
+
+    const fromColY = fromPos.y + RENDER.headerHeight + (fromColIdx >= 0 ? fromColIdx : 0) * RENDER.rowHeight + RENDER.rowHeight / 2;
+    const toColY = toPos.y + RENDER.headerHeight + (toColIdx >= 0 ? toColIdx : 0) * RENDER.rowHeight + RENDER.rowHeight / 2;
+
+    const fromCenterX = fromPos.x + fromPos.w / 2;
+    const toCenterX = toPos.x + toPos.w / 2;
+    let fromX, toX, fromSide, toSide;
+    if (fromCenterX < toCenterX) {
+      fromX = fromPos.x + fromPos.w; toX = toPos.x; fromSide = 'right'; toSide = 'left';
+    } else {
+      fromX = fromPos.x; toX = toPos.x + toPos.w; fromSide = 'left'; toSide = 'right';
+    }
+
+    const color = RENDER.lineColors[i % RENDER.lineColors.length];
+    offCtx.strokeStyle = color;
+    offCtx.fillStyle = color;
+    offCtx.lineWidth = RENDER.lineWidth;
+    offCtx.setLineDash([]);
+
+    const cpOffset = Math.min(80, Math.abs(toX - fromX) * 0.4);
+    const cp1x = fromSide === 'right' ? fromX + cpOffset : fromX - cpOffset;
+    const cp2x = toSide === 'left' ? toX - cpOffset : toX + cpOffset;
+
+    offCtx.beginPath();
+    offCtx.moveTo(fromX, fromColY);
+    offCtx.bezierCurveTo(cp1x, fromColY, cp2x, toColY, toX, toColY);
+    offCtx.stroke();
+
+    // Crow's foot
+    drawCrowsFootOnCtx(offCtx, fromX, fromColY, fromSide, 'many', color);
+    drawCrowsFootOnCtx(offCtx, toX, toColY, toSide, 'one', color);
+  }
+
+  // Draw tables
+  for (const table of State.tables) {
+    const pos = State.tablePositions.get(table.name);
+    if (pos) drawTableOnCtx(offCtx, table, pos);
+  }
+
+  // Title
+  offCtx.save();
+  offCtx.setTransform(exportScale, 0, 0, exportScale, 0, 0);
+  offCtx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
+  offCtx.fillStyle = '#3a4578';
+  offCtx.textAlign = 'left';
+  offCtx.textBaseline = 'top';
+  offCtx.fillText('Diagrama Entidad-Relación', 20, 15);
+  offCtx.font = '11px "Segoe UI", system-ui, sans-serif';
+  offCtx.fillStyle = '#888';
+  offCtx.fillText(`${State.tables.length} tablas · ${State.relationships.length} relaciones · Generado: ${new Date().toLocaleDateString('es-ES')}`, 20, 38);
+  offCtx.restore();
+
+  // Restore original colors
+  RENDER.rowBg = origRowBg;
+  RENDER.rowBgAlt = origRowBgAlt;
+  RENDER.rowText = origRowText;
+  RENDER.borderColor = origBorderColor;
+  RENDER.headerGradientStart = origHeaderStart;
+  RENDER.headerGradientEnd = origHeaderEnd;
+  RENDER.shadowColor = origShadowColor;
+
+  // Export
+  offCanvas.toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `diagrama-er-${new Date().toISOString().slice(0,10)}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('PNG descargado correctamente.', 'success', 3000);
+  }, 'image/png');
+}
+
+function drawTableOnCtx(c, table, pos) {
+  const { x, y, w } = pos;
+  const h = RENDER.headerHeight + table.columns.length * RENDER.rowHeight + 8;
+  
+  c.save();
+  c.shadowColor = RENDER.shadowColor;
+  c.shadowBlur = RENDER.shadowBlur;
+  c.shadowOffsetX = 3;
+  c.shadowOffsetY = 5;
+  c.fillStyle = RENDER.rowBg;
+  roundRectOnCtx(c, x, y, w, h, RENDER.tableBorderRadius);
+  c.fill();
+  c.restore();
+
+  c.strokeStyle = RENDER.borderColor;
+  c.lineWidth = 1.5;
+  roundRectOnCtx(c, x, y, w, h, RENDER.tableBorderRadius);
+  c.stroke();
+
+  // Header
+  c.save();
+  c.beginPath();
+  c.moveTo(x + RENDER.tableBorderRadius, y);
+  c.lineTo(x + w - RENDER.tableBorderRadius, y);
+  c.quadraticCurveTo(x + w, y, x + w, y + RENDER.tableBorderRadius);
+  c.lineTo(x + w, y + RENDER.headerHeight);
+  c.lineTo(x, y + RENDER.headerHeight);
+  c.lineTo(x, y + RENDER.tableBorderRadius);
+  c.quadraticCurveTo(x, y, x + RENDER.tableBorderRadius, y);
+  c.closePath();
+  const grad = c.createLinearGradient(x, y, x + w, y + RENDER.headerHeight);
+  grad.addColorStop(0, RENDER.headerGradientStart);
+  grad.addColorStop(1, RENDER.headerGradientEnd);
+  c.fillStyle = grad;
+  c.fill();
+  c.restore();
+
+  c.font = `bold 14px ${RENDER.fontFamily}`;
+  c.fillStyle = '#ffffff';
+  c.textBaseline = 'middle';
+  c.textAlign = 'left';
+  const headerText = (table.schema ? table.schema + '.' : '') + table.name;
+  c.fillText('📋 ' + headerText, x + 12, y + RENDER.headerHeight / 2);
+
+  c.font = `10px ${RENDER.fontFamily}`;
+  c.fillStyle = 'rgba(255,255,255,0.5)';
+  c.textAlign = 'right';
+  c.fillText(`${table.columns.length} cols`, x + w - 10, y + RENDER.headerHeight / 2);
+  c.textAlign = 'left';
+
+  c.strokeStyle = RENDER.borderColor;
+  c.lineWidth = 1;
+  c.beginPath();
+  c.moveTo(x, y + RENDER.headerHeight);
+  c.lineTo(x + w, y + RENDER.headerHeight);
+  c.stroke();
+
+  for (let i = 0; i < table.columns.length; i++) {
+    const col = table.columns[i];
+    const rowY = y + RENDER.headerHeight + i * RENDER.rowHeight;
+    
+    if (i % 2 === 1) {
+      c.fillStyle = RENDER.rowBgAlt;
+      if (i === table.columns.length - 1) {
+        c.beginPath();
+        c.moveTo(x, rowY);
+        c.lineTo(x + w, rowY);
+        c.lineTo(x + w, y + h - RENDER.tableBorderRadius);
+        c.quadraticCurveTo(x + w, y + h, x + w - RENDER.tableBorderRadius, y + h);
+        c.lineTo(x + RENDER.tableBorderRadius, y + h);
+        c.quadraticCurveTo(x, y + h, x, y + h - RENDER.tableBorderRadius);
+        c.lineTo(x, rowY);
+        c.closePath();
+        c.fill();
+      } else {
+        c.fillRect(x + 1, rowY, w - 2, RENDER.rowHeight);
+      }
+    }
+    
+    const textY = rowY + RENDER.rowHeight / 2;
+    let textX = x + 10;
+
+    const icons = [];
+    if (col.pk) icons.push({ text: '🔑', color: RENDER.pkColor });
+    if (col.fk) icons.push({ text: '🔗', color: RENDER.fkColor });
+    if (col.unique && !col.pk) icons.push({ text: '◆', color: RENDER.ukColor });
+    
+    c.font = `12px ${RENDER.fontFamily}`;
+    c.textBaseline = 'middle';
+    for (const icon of icons) {
+      c.fillText(icon.text, textX, textY);
+      textX += 18;
+    }
+    if (icons.length === 0) textX += 4;
+
+    c.font = col.pk ? `bold 12px ${RENDER.fontMono}` : `12px ${RENDER.fontMono}`;
+    c.fillStyle = col.pk ? '#b8860b' : (col.fk ? '#4169e1' : RENDER.rowText);
+    c.fillText(col.name, textX, textY);
+    
+    c.font = `11px ${RENDER.fontMono}`;
+    c.fillStyle = '#2a7fff';
+    c.textAlign = 'right';
+    
+    let typeText = col.type;
+    if (typeText.length > 22) typeText = typeText.substring(0, 20) + '…';
+    let typeX = x + w - 10;
+
+    const badges = [];
+    if (col.notNull && !col.pk) badges.push({ text: 'NN', color: '#d94040' });
+    if (col.autoIncrement) badges.push({ text: 'AI', color: '#8855cc' });
+    if (col.defaultVal) badges.push({ text: 'D', color: '#8855cc' });
+    if (col.check) badges.push({ text: 'CK', color: '#cc7722' });
+    
+    c.font = `bold 9px ${RENDER.fontFamily}`;
+    for (let b = badges.length - 1; b >= 0; b--) {
+      const badge = badges[b];
+      const bw = c.measureText(badge.text).width + 8;
+      const bx = typeX - bw;
+      const by = textY - 7;
+      
+      c.fillStyle = badge.color + '22';
+      c.strokeStyle = badge.color + '88';
+      c.lineWidth = 1;
+      roundRectOnCtx(c, bx, by, bw, 14, 3);
+      c.fill();
+      roundRectOnCtx(c, bx, by, bw, 14, 3);
+      c.stroke();
+      
+      c.fillStyle = badge.color;
+      c.textAlign = 'center';
+      c.fillText(badge.text, bx + bw / 2, textY);
+      
+      typeX = bx - 5;
+    }
+    
+    c.font = `11px ${RENDER.fontMono}`;
+    c.fillStyle = '#2a7fff';
+    c.textAlign = 'right';
+    c.fillText(typeText, typeX, textY);
+    c.textAlign = 'left';
+  }
+}
+
+function drawCrowsFootOnCtx(c, x, y, side, cardinality, color) {
+  const dir = side === 'right' ? 1 : -1;
+  const size = 12;
+  c.strokeStyle = color;
+  c.fillStyle = color;
+  c.lineWidth = 2;
+
+  if (cardinality === 'many') {
+    c.beginPath(); c.moveTo(x, y); c.lineTo(x + dir * size, y - size * 0.6); c.stroke();
+    c.beginPath(); c.moveTo(x, y); c.lineTo(x + dir * size, y); c.stroke();
+    c.beginPath(); c.moveTo(x, y); c.lineTo(x + dir * size, y + size * 0.6); c.stroke();
+    c.beginPath(); c.moveTo(x + dir * (size + 3), y - size * 0.6); c.lineTo(x + dir * (size + 3), y + size * 0.6); c.stroke();
+  } else {
+    c.beginPath(); c.moveTo(x - dir * 3, y - 8); c.lineTo(x - dir * 3, y + 8); c.stroke();
+    c.beginPath(); c.moveTo(x - dir * 7, y - 8); c.lineTo(x - dir * 7, y + 8); c.stroke();
+  }
+}
+
+function roundRectOnCtx(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.lineTo(x + w - r, y);
+  c.quadraticCurveTo(x + w, y, x + w, y + r);
+  c.lineTo(x + w, y + h - r);
+  c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  c.lineTo(x + r, y + h);
+  c.quadraticCurveTo(x, y + h, x, y + h - r);
+  c.lineTo(x, y + r);
+  c.quadraticCurveTo(x, y, x + r, y);
+  c.closePath();
+}
+
+// ===========================================================================
+// INITIALIZATION
+// ===========================================================================
+
+resizeCanvas();
+render();
+
+</script>
+</body>
+</html>
