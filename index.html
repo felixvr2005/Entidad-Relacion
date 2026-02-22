@@ -144,9 +144,14 @@ select.dialect-select:focus { border-color: var(--accent-blue); }
 .denada-text { font-size: clamp(32px, 6vw, 72px); font-weight: 900; letter-spacing: 4px; background: linear-gradient(135deg, #7aa2f7 0%, #bb9af7 30%, #e0af68 60%, #9ece6a 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; text-shadow: none; filter: drop-shadow(0 0 40px rgba(122,162,247,0.4)); }
 .denada-sub { margin-top: 12px; font-size: 16px; color: rgba(255,255,255,0.5); font-weight: 400; letter-spacing: 6px; text-transform: uppercase; }
 .denada-sparkle { font-size: 40px; margin-bottom: 10px; animation: denadaSpin 1s linear; }
+.denada-loading { margin-top: 30px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.denada-loading span { font-size: 13px; font-weight: 700; letter-spacing: 4px; color: rgba(255,255,255,0.4); }
+.denada-loading-bar { width: 220px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
+.denada-loading-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #7aa2f7, #bb9af7, #e0af68); border-radius: 4px; animation: denadaBarFill 2.8s ease-out forwards; }
 @keyframes denadaFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes denadaPop { from { transform: scale(0.3) rotate(-5deg); opacity: 0; } to { transform: scale(1) rotate(0deg); opacity: 1; } }
 @keyframes denadaSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes denadaBarFill { 0% { width: 0%; } 100% { width: 100%; } }
 </style>
 </head>
 <body>
@@ -1174,7 +1179,12 @@ function computeLayout(tables, relationships) {
   const positions = new Map();
   if (tables.length === 0) return positions;
 
-  // Compute table dimensions
+  const paddingX = 80;
+  const paddingY = 70;
+  const gapX = 120;
+  const gapY = 90;
+
+  // ── Compute dimensions ──
   const dims = new Map();
   for (const t of tables) {
     const w = computeTableWidth(t);
@@ -1182,189 +1192,152 @@ function computeLayout(tables, relationships) {
     dims.set(t.name, { w, h });
   }
 
-  // Build directed graph: FK table → PK table
-  const adj = new Map();
-  const inDeg = new Map();
-  const outDeg = new Map();
-  for (const t of tables) {
-    adj.set(t.name, new Set());
-    inDeg.set(t.name, 0);
-    outDeg.set(t.name, 0);
-  }
+  // ── Build dependency graph ──
+  // Edge: from (FK holder) → to (PK table it references)
+  const children = new Map(); // PK table → [FK tables that reference it]
+  const parents  = new Map(); // FK table → [PK tables it references]
+  const allNames = new Set(tables.map(t => t.name));
+  for (const t of tables) { children.set(t.name, []); parents.set(t.name, []); }
+
   for (const r of relationships) {
-    if (adj.has(r.from.table) && adj.has(r.to.table)) {
-      adj.get(r.from.table).add(r.to.table);
-      // from (FK) depends on to (PK)
-      inDeg.set(r.from.table, (inDeg.get(r.from.table) || 0));
-      outDeg.set(r.from.table, (outDeg.get(r.from.table) || 0) + 1);
-      inDeg.set(r.to.table, (inDeg.get(r.to.table) || 0) + 1);
-    }
+    if (!allNames.has(r.from.table) || !allNames.has(r.to.table)) continue;
+    if (r.from.table === r.to.table) continue; // self-ref
+    children.get(r.to.table).push(r.from.table);   // PK → FK dependents
+    parents.get(r.from.table).push(r.to.table);     // FK → PK parents
   }
 
-  // ── PHASE 1: Layered assignment (topological) ──
-  // Root tables = tables that are referenced by others (PK tables, high inDeg)
-  // Leaf tables = tables that reference others but aren't referenced (FK-only)
-  const layers = [];
+  // ── PHASE 1: Topological layer assignment (Coffman-Graham style) ──
+  // Layer 0 = root tables (no FK to others, i.e. pure PK tables)
+  const layer = new Map();
   const assigned = new Set();
+  const layers = [];
 
-  // BFS from root nodes (PKs with most incoming references)
-  const roots = tables
-    .filter(t => {
-      // A root is a table that others reference (inDeg > 0) and doesn't reference many others
-      const refs = outDeg.get(t.name) || 0;
-      const refBy = inDeg.get(t.name) || 0;
-      return refBy > 0 && refs === 0;
-    })
-    .map(t => t.name);
-
-  // If no clear roots, use tables with highest inDeg
-  if (roots.length === 0) {
-    const sortedByIn = [...tables].sort((a, b) => (inDeg.get(b.name) || 0) - (inDeg.get(a.name) || 0));
-    if (sortedByIn.length > 0 && (inDeg.get(sortedByIn[0].name) || 0) > 0) {
-      roots.push(sortedByIn[0].name);
-    }
+  // Find roots: tables that don't reference anyone
+  let currentLevel = tables.filter(t => parents.get(t.name).length === 0).map(t => t.name);
+  
+  // If no pure roots (circular refs), pick the most-referenced tables
+  if (currentLevel.length === 0) {
+    const byRefs = [...tables].sort((a, b) => children.get(b.name).length - children.get(a.name).length);
+    currentLevel = [byRefs[0].name];
   }
 
-  // BFS layer assignment
-  if (roots.length > 0) {
-    let currentLayer = [...roots];
-    while (currentLayer.length > 0) {
-      layers.push(currentLayer);
-      currentLayer.forEach(n => assigned.add(n));
-      const nextLayer = [];
-      for (const node of currentLayer) {
-        // Find tables that have FK to this node
-        for (const t of tables) {
-          if (assigned.has(t.name)) continue;
-          const hasRelToNode = relationships.some(r =>
-            (r.to.table === node && r.from.table === t.name) ||
-            (r.from.table === node && r.to.table === t.name && !assigned.has(t.name))
-          );
-          if (hasRelToNode && !nextLayer.includes(t.name)) {
-            nextLayer.push(t.name);
-          }
-        }
+  while (currentLevel.length > 0) {
+    // Sort within layer: most children (dependents) first → centered
+    currentLevel.sort((a, b) => children.get(b).length - children.get(a).length);
+    layers.push([...currentLevel]);
+    currentLevel.forEach(n => { assigned.add(n); layer.set(n, layers.length - 1); });
+
+    const nextLevel = new Set();
+    for (const name of currentLevel) {
+      for (const child of children.get(name)) {
+        if (assigned.has(child)) continue;
+        // Only add child if ALL its parents are already assigned
+        const allParentsAssigned = parents.get(child).every(p => assigned.has(p));
+        if (allParentsAssigned) nextLevel.add(child);
       }
-      currentLayer = nextLayer;
     }
+    currentLevel = [...nextLevel];
   }
 
-  // Add any unassigned tables
-  const unassigned = tables.filter(t => !assigned.has(t.name)).map(t => t.name);
-  if (unassigned.length > 0) {
-    layers.push(unassigned);
+  // Add orphans (unconnected tables or stuck in cycles)
+  const orphans = tables.filter(t => !assigned.has(t.name)).map(t => t.name);
+  if (orphans.length > 0) layers.push(orphans);
+
+  // ── PHASE 2: Horizontal ordering within layers (minimize crossings) ──
+  // For each layer, order nodes so connected parents are close horizontally
+  for (let li = 1; li < layers.length; li++) {
+    const prevLayer = layers[li - 1];
+    layers[li].sort((a, b) => {
+      // Barycenter heuristic: average X position of parents
+      const parentsA = parents.get(a).filter(p => prevLayer.includes(p));
+      const parentsB = parents.get(b).filter(p => prevLayer.includes(p));
+      const avgA = parentsA.length > 0 ? parentsA.reduce((s, p) => s + prevLayer.indexOf(p), 0) / parentsA.length : prevLayer.length / 2;
+      const avgB = parentsB.length > 0 ? parentsB.reduce((s, p) => s + prevLayer.indexOf(p), 0) / parentsB.length : prevLayer.length / 2;
+      return avgA - avgB;
+    });
   }
 
-  // ── PHASE 2: Position by layers (hierarchical) ──
-  const paddingX = 80;
-  const paddingY = 70;
-  const spacingX = 100;
-  const spacingY = 80;
+  // ── PHASE 3: Position tables ──
+  // Find max layer width for centering
+  const layerWidths = layers.map(lr => {
+    let w = 0;
+    for (const name of lr) w += (dims.get(name)?.w || 250) + gapX;
+    return w - gapX;
+  });
+  const maxLayerWidth = Math.max(...layerWidths);
 
   let y = paddingY;
-  for (const layer of layers) {
-    // Center this layer horizontally
-    let totalW = 0;
-    for (const name of layer) {
-      totalW += (dims.get(name)?.w || 250) + spacingX;
-    }
-    totalW -= spacingX;
-
-    let x = paddingX;
+  for (let li = 0; li < layers.length; li++) {
+    const lr = layers[li];
+    const lw = layerWidths[li];
+    // Center this layer relative to widest
+    let x = paddingX + (maxLayerWidth - lw) / 2;
     let maxH = 0;
-    for (const name of layer) {
+    for (const name of lr) {
       const dim = dims.get(name) || { w: 250, h: 200 };
-      positions.set(name, { x, y, w: dim.w, h: dim.h });
-      x += dim.w + spacingX;
+      positions.set(name, { x: Math.round(x), y: Math.round(y), w: dim.w, h: dim.h });
+      x += dim.w + gapX;
       maxH = Math.max(maxH, dim.h);
     }
-    y += maxH + spacingY;
+    y += maxH + gapY;
   }
 
-  // ── PHASE 3: Force-directed refinement ──
-  for (let iter = 0; iter < 120; iter++) {
-    let totalForce = 0;
-
-    // Attraction: connected tables pull towards ideal distance
-    for (const r of relationships) {
-      const posA = positions.get(r.from.table);
-      const posB = positions.get(r.to.table);
-      if (!posA || !posB) continue;
-
-      const ax = posA.x + posA.w / 2;
-      const ay = posA.y + posA.h / 2;
-      const bx = posB.x + posB.w / 2;
-      const by = posB.y + posB.h / 2;
-      const dx = bx - ax;
-      const dy = by - ay;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const idealDist = 350;
-      const force = (dist - idealDist) * 0.015;
-      const fx = (dx / dist) * force;
-      const fy = (dy / dist) * force;
-      posA.x += fx;
-      posA.y += fy * 0.3; // restrict vertical movement to preserve layers
-      posB.x -= fx;
-      posB.y -= fy * 0.3;
-      totalForce += Math.abs(force);
-    }
-
-    // Strong repulsion between all tables to prevent overlap
-    const tableList = [...positions.entries()];
-    for (let i = 0; i < tableList.length; i++) {
-      for (let j = i + 1; j < tableList.length; j++) {
-        const [, a] = tableList[i];
-        const [, b] = tableList[j];
-        const margin = 40;
-        if (a.x < b.x + b.w + margin && a.x + a.w + margin > b.x &&
-            a.y < b.y + b.h + margin && a.y + a.h + margin > b.y) {
-          const cx = (a.x + a.w / 2) - (b.x + b.w / 2);
-          const cy = (a.y + a.h / 2) - (b.y + b.h / 2);
-          const d = Math.sqrt(cx * cx + cy * cy) || 1;
-          const overlapAmount = Math.min(
-            (a.w / 2 + b.w / 2 + margin) - Math.abs(cx),
-            (a.h / 2 + b.h / 2 + margin) - Math.abs(cy)
-          );
-          const push = Math.max(5, overlapAmount * 0.4);
-          a.x += (cx / d) * push;
-          a.y += (cy / d) * push;
-          b.x -= (cx / d) * push;
-          b.y -= (cy / d) * push;
-          totalForce += push;
-        }
+  // ── PHASE 4: Horizontal refinement — align children under parents ──
+  for (let pass = 0; pass < 4; pass++) {
+    for (let li = 1; li < layers.length; li++) {
+      for (const name of layers[li]) {
+        const pos = positions.get(name);
+        const myParents = parents.get(name).filter(p => positions.has(p));
+        if (myParents.length === 0) continue;
+        // Target X = average center of parents
+        const targetCx = myParents.reduce((s, p) => {
+          const pp = positions.get(p);
+          return s + pp.x + pp.w / 2;
+        }, 0) / myParents.length;
+        const myCx = pos.x + pos.w / 2;
+        // Move gently towards target
+        pos.x += (targetCx - myCx) * 0.5;
       }
     }
-
-    // Global repulsion (keeps tables spread)
-    for (let i = 0; i < tableList.length; i++) {
-      for (let j = i + 1; j < tableList.length; j++) {
-        const [, a] = tableList[i];
-        const [, b] = tableList[j];
-        const cx = (a.x + a.w / 2) - (b.x + b.w / 2);
-        const cy = (a.y + a.h / 2) - (b.y + b.h / 2);
-        const d = Math.sqrt(cx * cx + cy * cy) || 1;
-        if (d < 500) {
-          const repulse = 800 / (d * d);
-          a.x += (cx / d) * repulse;
-          a.y += (cy / d) * repulse * 0.3;
-          b.x -= (cx / d) * repulse;
-          b.y -= (cy / d) * repulse * 0.3;
-        }
+    // Also pull parents towards children (upward pass)
+    for (let li = layers.length - 2; li >= 0; li--) {
+      for (const name of layers[li]) {
+        const pos = positions.get(name);
+        const myChildren = children.get(name).filter(c => positions.has(c));
+        if (myChildren.length === 0) continue;
+        const targetCx = myChildren.reduce((s, c) => {
+          const cp = positions.get(c);
+          return s + cp.x + cp.w / 2;
+        }, 0) / myChildren.length;
+        const myCx = pos.x + pos.w / 2;
+        pos.x += (targetCx - myCx) * 0.3;
       }
     }
-
-    if (totalForce < 1) break;
   }
 
-  // ── PHASE 4: Normalize positions ──
+  // ── PHASE 5: Resolve overlaps within each layer ──
+  for (const lr of layers) {
+    // Sort by x position
+    const sorted = lr.map(n => ({ name: n, pos: positions.get(n) })).sort((a, b) => a.pos.x - b.pos.x);
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1].pos;
+      const curr = sorted[i].pos;
+      const minX = prev.x + prev.w + 50; // minimum gap
+      if (curr.x < minX) {
+        curr.x = minX;
+      }
+    }
+  }
+
+  // ── PHASE 6: Normalize — shift everything to start at padding ──
   let minX = Infinity, minY = Infinity;
   for (const [, pos] of positions) {
     minX = Math.min(minX, pos.x);
     minY = Math.min(minY, pos.y);
   }
   for (const [, pos] of positions) {
-    pos.x += paddingX - minX;
-    pos.y += paddingY - minY;
+    pos.x = Math.round(pos.x + paddingX - minX);
+    pos.y = Math.round(pos.y + paddingY - minY);
   }
 
   return positions;
@@ -1999,15 +1972,23 @@ function showDenadaPopup() {
       <div class="denada-sparkle">✨</div>
       <div class="denada-text">DE NADA CHICOS</div>
       <div class="denada-sub">— diagrama generado con éxito —</div>
+      <div class="denada-loading">
+        <div class="denada-loading-bar"><div class="denada-loading-fill"></div></div>
+        <span>CARGANDO...</span>
+      </div>
     </div>
   `;
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', () => overlay.remove());
-  setTimeout(() => {
+  overlay.addEventListener('click', () => {
     overlay.style.transition = 'opacity 0.3s ease';
     overlay.style.opacity = '0';
     setTimeout(() => overlay.remove(), 300);
-  }, 1200);
+  });
+  setTimeout(() => {
+    overlay.style.transition = 'opacity 0.4s ease';
+    overlay.style.opacity = '0';
+    setTimeout(() => overlay.remove(), 400);
+  }, 3000);
 }
 
 // ─── AUTO LAYOUT BUTTON ─────────────────────────────────────────────────────
