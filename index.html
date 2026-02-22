@@ -137,6 +137,16 @@ select.dialect-select:focus { border-color: var(--accent-blue); }
 ::-webkit-scrollbar-track { background: var(--bg-primary); }
 ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ===== POPUP DE NADA ===== */
+.denada-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; background: rgba(10,10,20,0.85); backdrop-filter: blur(8px); animation: denadaFadeIn 0.2s ease; }
+.denada-box { text-align: center; animation: denadaPop 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+.denada-text { font-size: clamp(32px, 6vw, 72px); font-weight: 900; letter-spacing: 4px; background: linear-gradient(135deg, #7aa2f7 0%, #bb9af7 30%, #e0af68 60%, #9ece6a 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; text-shadow: none; filter: drop-shadow(0 0 40px rgba(122,162,247,0.4)); }
+.denada-sub { margin-top: 12px; font-size: 16px; color: rgba(255,255,255,0.5); font-weight: 400; letter-spacing: 6px; text-transform: uppercase; }
+.denada-sparkle { font-size: 40px; margin-bottom: 10px; animation: denadaSpin 1s linear; }
+@keyframes denadaFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes denadaPop { from { transform: scale(0.3) rotate(-5deg); opacity: 0; } to { transform: scale(1) rotate(0deg); opacity: 1; } }
+@keyframes denadaSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -183,6 +193,7 @@ select.dialect-select:focus { border-color: var(--accent-blue); }
             <a data-example="complex">🧩 SQL Complejo (CHECK, ARRAY, JSON)</a>
           </div>
         </div>
+        <button class="btn btn-secondary btn-sm" id="btnAutoLayout" title="Reorganizar tablas automáticamente">🔀 Auto Layout</button>
         <button class="btn btn-secondary btn-sm" id="btnClear" title="Limpiar editor">🗑️</button>
         <button class="btn btn-secondary btn-sm" id="btnFitView" title="Ajustar vista">🔲</button>
       </div>
@@ -1163,7 +1174,7 @@ function computeLayout(tables, relationships) {
   const positions = new Map();
   if (tables.length === 0) return positions;
 
-  // Compute table dimensions first
+  // Compute table dimensions
   const dims = new Map();
   for (const t of tables) {
     const w = computeTableWidth(t);
@@ -1171,118 +1182,189 @@ function computeLayout(tables, relationships) {
     dims.set(t.name, { w, h });
   }
 
-  // Build adjacency info for relationship-aware layout
+  // Build directed graph: FK table → PK table
   const adj = new Map();
-  for (const t of tables) adj.set(t.name, new Set());
+  const inDeg = new Map();
+  const outDeg = new Map();
+  for (const t of tables) {
+    adj.set(t.name, new Set());
+    inDeg.set(t.name, 0);
+    outDeg.set(t.name, 0);
+  }
   for (const r of relationships) {
     if (adj.has(r.from.table) && adj.has(r.to.table)) {
       adj.get(r.from.table).add(r.to.table);
-      adj.get(r.to.table).add(r.from.table);
+      // from (FK) depends on to (PK)
+      inDeg.set(r.from.table, (inDeg.get(r.from.table) || 0));
+      outDeg.set(r.from.table, (outDeg.get(r.from.table) || 0) + 1);
+      inDeg.set(r.to.table, (inDeg.get(r.to.table) || 0) + 1);
     }
   }
 
-  // Sort tables: most connected first (central placement)
-  const sorted = [...tables].sort((a, b) => {
-    const da = adj.get(a.name)?.size || 0;
-    const db = adj.get(b.name)?.size || 0;
-    return db - da;
-  });
+  // ── PHASE 1: Layered assignment (topological) ──
+  // Root tables = tables that are referenced by others (PK tables, high inDeg)
+  // Leaf tables = tables that reference others but aren't referenced (FK-only)
+  const layers = [];
+  const assigned = new Set();
 
-  // Grid layout with spacing
-  const paddingX = 60;
-  const paddingY = 50;
-  const spacingX = 80;
-  const spacingY = 60;
-  const cols = Math.max(1, Math.ceil(Math.sqrt(tables.length)));
+  // BFS from root nodes (PKs with most incoming references)
+  const roots = tables
+    .filter(t => {
+      // A root is a table that others reference (inDeg > 0) and doesn't reference many others
+      const refs = outDeg.get(t.name) || 0;
+      const refBy = inDeg.get(t.name) || 0;
+      return refBy > 0 && refs === 0;
+    })
+    .map(t => t.name);
 
-  let x = paddingX;
+  // If no clear roots, use tables with highest inDeg
+  if (roots.length === 0) {
+    const sortedByIn = [...tables].sort((a, b) => (inDeg.get(b.name) || 0) - (inDeg.get(a.name) || 0));
+    if (sortedByIn.length > 0 && (inDeg.get(sortedByIn[0].name) || 0) > 0) {
+      roots.push(sortedByIn[0].name);
+    }
+  }
+
+  // BFS layer assignment
+  if (roots.length > 0) {
+    let currentLayer = [...roots];
+    while (currentLayer.length > 0) {
+      layers.push(currentLayer);
+      currentLayer.forEach(n => assigned.add(n));
+      const nextLayer = [];
+      for (const node of currentLayer) {
+        // Find tables that have FK to this node
+        for (const t of tables) {
+          if (assigned.has(t.name)) continue;
+          const hasRelToNode = relationships.some(r =>
+            (r.to.table === node && r.from.table === t.name) ||
+            (r.from.table === node && r.to.table === t.name && !assigned.has(t.name))
+          );
+          if (hasRelToNode && !nextLayer.includes(t.name)) {
+            nextLayer.push(t.name);
+          }
+        }
+      }
+      currentLayer = nextLayer;
+    }
+  }
+
+  // Add any unassigned tables
+  const unassigned = tables.filter(t => !assigned.has(t.name)).map(t => t.name);
+  if (unassigned.length > 0) {
+    layers.push(unassigned);
+  }
+
+  // ── PHASE 2: Position by layers (hierarchical) ──
+  const paddingX = 80;
+  const paddingY = 70;
+  const spacingX = 100;
+  const spacingY = 80;
+
   let y = paddingY;
-  let rowMaxH = 0;
-  let colIndex = 0;
-
-  for (let i = 0; i < sorted.length; i++) {
-    const t = sorted[i];
-    const dim = dims.get(t.name);
-    
-    positions.set(t.name, { x, y, w: dim.w, h: dim.h });
-    
-    rowMaxH = Math.max(rowMaxH, dim.h);
-    colIndex++;
-    
-    if (colIndex >= cols) {
-      colIndex = 0;
-      x = paddingX;
-      y += rowMaxH + spacingY;
-      rowMaxH = 0;
-    } else {
-      x += dim.w + spacingX;
+  for (const layer of layers) {
+    // Center this layer horizontally
+    let totalW = 0;
+    for (const name of layer) {
+      totalW += (dims.get(name)?.w || 250) + spacingX;
     }
+    totalW -= spacingX;
+
+    let x = paddingX;
+    let maxH = 0;
+    for (const name of layer) {
+      const dim = dims.get(name) || { w: 250, h: 200 };
+      positions.set(name, { x, y, w: dim.w, h: dim.h });
+      x += dim.w + spacingX;
+      maxH = Math.max(maxH, dim.h);
+    }
+    y += maxH + spacingY;
   }
 
-  // Simple force-directed adjustment to reduce line crossings (few iterations)
-  for (let iter = 0; iter < 50; iter++) {
-    let moved = false;
+  // ── PHASE 3: Force-directed refinement ──
+  for (let iter = 0; iter < 120; iter++) {
+    let totalForce = 0;
+
+    // Attraction: connected tables pull towards ideal distance
     for (const r of relationships) {
       const posA = positions.get(r.from.table);
       const posB = positions.get(r.to.table);
       if (!posA || !posB) continue;
 
-      const dx = (posB.x + posB.w / 2) - (posA.x + posA.w / 2);
-      const dy = (posB.y + posB.h / 2) - (posA.y + posA.h / 2);
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const idealDist = 400;
-
-      if (dist > 0 && Math.abs(dist - idealDist) > 20) {
-        const force = (dist - idealDist) * 0.02;
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-        posA.x += fx * 0.5;
-        posA.y += fy * 0.5;
-        posB.x -= fx * 0.5;
-        posB.y -= fy * 0.5;
-        moved = true;
-      }
+      const ax = posA.x + posA.w / 2;
+      const ay = posA.y + posA.h / 2;
+      const bx = posB.x + posB.w / 2;
+      const by = posB.y + posB.h / 2;
+      const dx = bx - ax;
+      const dy = by - ay;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const idealDist = 350;
+      const force = (dist - idealDist) * 0.015;
+      const fx = (dx / dist) * force;
+      const fy = (dy / dist) * force;
+      posA.x += fx;
+      posA.y += fy * 0.3; // restrict vertical movement to preserve layers
+      posB.x -= fx;
+      posB.y -= fy * 0.3;
+      totalForce += Math.abs(force);
     }
 
-    // Repulsion between overlapping tables
+    // Strong repulsion between all tables to prevent overlap
     const tableList = [...positions.entries()];
     for (let i = 0; i < tableList.length; i++) {
       for (let j = i + 1; j < tableList.length; j++) {
         const [, a] = tableList[i];
         const [, b] = tableList[j];
-        const overlapX = (a.x + a.w + 20) - b.x;
-        const overlapY = (a.y + a.h + 20) - b.y;
-        if (a.x < b.x + b.w + 20 && a.x + a.w + 20 > b.x &&
-            a.y < b.y + b.h + 20 && a.y + a.h + 20 > b.y) {
-          // Overlap detected, push apart
+        const margin = 40;
+        if (a.x < b.x + b.w + margin && a.x + a.w + margin > b.x &&
+            a.y < b.y + b.h + margin && a.y + a.h + margin > b.y) {
           const cx = (a.x + a.w / 2) - (b.x + b.w / 2);
           const cy = (a.y + a.h / 2) - (b.y + b.h / 2);
           const d = Math.sqrt(cx * cx + cy * cy) || 1;
-          const push = 8;
+          const overlapAmount = Math.min(
+            (a.w / 2 + b.w / 2 + margin) - Math.abs(cx),
+            (a.h / 2 + b.h / 2 + margin) - Math.abs(cy)
+          );
+          const push = Math.max(5, overlapAmount * 0.4);
           a.x += (cx / d) * push;
           a.y += (cy / d) * push;
           b.x -= (cx / d) * push;
           b.y -= (cy / d) * push;
-          moved = true;
+          totalForce += push;
         }
       }
     }
-    if (!moved) break;
+
+    // Global repulsion (keeps tables spread)
+    for (let i = 0; i < tableList.length; i++) {
+      for (let j = i + 1; j < tableList.length; j++) {
+        const [, a] = tableList[i];
+        const [, b] = tableList[j];
+        const cx = (a.x + a.w / 2) - (b.x + b.w / 2);
+        const cy = (a.y + a.h / 2) - (b.y + b.h / 2);
+        const d = Math.sqrt(cx * cx + cy * cy) || 1;
+        if (d < 500) {
+          const repulse = 800 / (d * d);
+          a.x += (cx / d) * repulse;
+          a.y += (cy / d) * repulse * 0.3;
+          b.x -= (cx / d) * repulse;
+          b.y -= (cy / d) * repulse * 0.3;
+        }
+      }
+    }
+
+    if (totalForce < 1) break;
   }
 
-  // Ensure no negative positions
+  // ── PHASE 4: Normalize positions ──
   let minX = Infinity, minY = Infinity;
   for (const [, pos] of positions) {
     minX = Math.min(minX, pos.x);
     minY = Math.min(minY, pos.y);
   }
-  if (minX < paddingX || minY < paddingY) {
-    const shiftX = minX < paddingX ? paddingX - minX : 0;
-    const shiftY = minY < paddingY ? paddingY - minY : 0;
-    for (const [, pos] of positions) {
-      pos.x += shiftX;
-      pos.y += shiftY;
-    }
+  for (const [, pos] of positions) {
+    pos.x += paddingX - minX;
+    pos.y += paddingY - minY;
   }
 
   return positions;
@@ -1898,12 +1980,46 @@ function generateDiagram() {
     document.getElementById('statusText').textContent = `✓ ${result.tables.length} tablas, ${result.relationships.length} relaciones, ${totalCols} columnas`;
     showToast(`Diagrama generado: ${result.tables.length} tablas, ${result.relationships.length} relaciones`, 'success', 3000);
     
+    // ── Popup DE NADA CHICOS ──
+    showDenadaPopup();
+    
   } catch (err) {
     console.error('Parse error:', err);
     showToast(`Error al parsear SQL: ${err.message}`, 'error');
     document.getElementById('statusText').textContent = 'Error de parseo';
   }
 }
+
+// ─── POPUP DE NADA CHICOS ───────────────────────────────────────────────────
+function showDenadaPopup() {
+  const overlay = document.createElement('div');
+  overlay.className = 'denada-overlay';
+  overlay.innerHTML = `
+    <div class="denada-box">
+      <div class="denada-sparkle">✨</div>
+      <div class="denada-text">DE NADA CHICOS</div>
+      <div class="denada-sub">— diagrama generado con éxito —</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', () => overlay.remove());
+  setTimeout(() => {
+    overlay.style.transition = 'opacity 0.3s ease';
+    overlay.style.opacity = '0';
+    setTimeout(() => overlay.remove(), 300);
+  }, 1200);
+}
+
+// ─── AUTO LAYOUT BUTTON ─────────────────────────────────────────────────────
+document.getElementById('btnAutoLayout').addEventListener('click', () => {
+  if (State.tables.length === 0) {
+    showToast('No hay tablas para reorganizar.', 'error');
+    return;
+  }
+  State.tablePositions = computeLayout(State.tables, State.relationships);
+  fitView();
+  showToast('Layout reorganizado.', 'success', 2000);
+});
 
 // ===========================================================================
 // PNG EXPORT
